@@ -38,7 +38,7 @@ typedef unsigned int        uint32_t;
 #ifndef size_t
 //typedef unsigned int        size_t;
 #endif
-typedef unsigned long       uintptr_t;
+typedef unsigned int       uintptr_t;
 typedef signed long long    int64_t;
 typedef unsigned long long  uint64_t;
 #endif
