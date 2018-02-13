@@ -12,6 +12,7 @@ PREF=/opt/amigaos-68k
 		  
 CC := $(PREFX)/bin/m68k-amigaos-gcc 
 AS := $(PREFX)/bin/m68k-amigaos-as
+AR := $(PREFX)/bin/m68k-amigaos-ar
 LD := $(PREFX)/bin/m68k-amigaos-ld
 RL := $(PREFX)/bin/m68k-amigaos-ranlib
 VASM = vasmm68k_mot
@@ -75,7 +76,7 @@ all: libSDL.a
 
 libSDL.a: $(GOBJS)
 	-rm -f libSDL.a
-	ar cru libSDL.a $(GOBJS)
+	$(AR) cru libSDL.a $(GOBJS)
 	$(RL) libSDL.a
 #	-cp libSDL.a $(PREF)/extra/lib
 
