@@ -25,7 +25,7 @@ INCLUDES= IDIR=./include/SDL
 #CFLAGS = CPU=68060  CODE=FAR DATA=FAR -I. -I../include -DNOIXEMUL
 #DEBUG=FULL VERBOSE
 
-GCCFLAGS = -I$(PREF)/include -I./include/ -I./include/SDL -I$(PREF)/m68k-amigaos/libnix/include \
+GCCFLAGS = -I$(PREF)/include -I./include/ -I./include/SDL \
 			-O3 -fomit-frame-pointer -m68020-60 -msoft-float -mnobitfield \
 			-DNOIXEMUL -D_HAVE_STDINT_H
 GLFLAGS = -DSHARED_LIB -lamiga
@@ -54,7 +54,7 @@ GOBJS = audio/SDL_audio.go audio/SDL_audiocvt.go audio/SDL_mixer.go audio/SDL_wa
 #
 # BEGIN APOLLO ASM SUPPORT
 # ( build vasm: make CPU=m68k SYNTAX=mot )
-VFLAGS = -devpac -I$(PREF)/m68k-amigaos/sys-include -Fhunk
+VFLAGS = -devpac -I$(PREF)/m68k-amigaos/ndk-include -Fhunk
 GCCFLAGS += -DAPOLLO_BLIT -I./video/apollo
 #GCCFLAGS += -DAPOLLO_BLITDBG
 GOBJS += video/apollo/blitapollo.ao video/apollo/apolloammxenable.ao video/apollo/colorkeyapollo.ao
