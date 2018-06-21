@@ -38,6 +38,8 @@ static char rcsid =
 #include <cybergraphx/cybergraphics.h>
 #else
 #include <cybergraphics/cybergraphics.h>
+#include <proto/dos.h>
+#include <inline/dos.h>
 #endif
 
 #include "SDL_video.h"

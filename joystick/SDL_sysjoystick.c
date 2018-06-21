@@ -41,6 +41,8 @@ static char rcsid =
 #include <ppcinline/lowlevel.h>
 #include <ppcinline/graphics.h>
 #else
+#include <proto/dos.h>
+#include <inline/dos.h>
 #include <inline/exec.h>
 #include <inline/lowlevel.h>
 #include <inline/graphics.h>

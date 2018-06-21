@@ -30,7 +30,7 @@
 
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_systimer.c,v 1.4 2008/09/29 20:54:05 rö Exp $";
+ "@(#) $Id: SDL_systimer.c,v 1.4 2008/09/29 20:54:05 rï¿½ Exp $";
 #endif
 #include <SDL.h>
 #include <devices/timer.h>
@@ -50,6 +50,7 @@ static char rcsid =
 #include <ppcinline/exec.h>
 #include <ppcinline/graphics.h>
 #else
+#include <proto/dos.h>
 #include <inline/dos.h>
 #include <inline/exec.h>
 #include <inline/graphics.h>

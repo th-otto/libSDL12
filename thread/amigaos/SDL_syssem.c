@@ -54,6 +54,8 @@ static char rcsid =
 #include <ppcinline/exec.h>
 #else
 #include <inline/exec.h>
+#include <proto/dos.h>
+#include <inline/dos.h>
 #endif
 #include "SDL_error.h"
 #include "SDL_thread.h"

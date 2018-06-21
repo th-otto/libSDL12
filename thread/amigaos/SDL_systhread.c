@@ -27,6 +27,8 @@ static char rcsid =
  "@(#) $Id: SDL_systhread.c,v 1.2 2002/11/20 08:52:36 gabry Exp $";
 #endif
 
+#include <proto/dos.h>
+#include <inline/dos.h>
 
 #include "../../include/SDL/SDL.h"
 #include <exec/nodes.h>
