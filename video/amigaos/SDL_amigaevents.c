@@ -43,6 +43,11 @@ static char rcsid =
 
 #include "SDL_amigaevents_c.h"
 
+#include <proto/dos.h>
+#include <proto/keymap.h>
+#include <inline/dos.h>
+#include <inline/keymap.h>
+
 /* The translation tables from an Amiga keysym to a SDL keysym */
 static SDLKey MISC_keymap[256];
 SDL_keysym *amiga_TranslateKey(int code, int qual, SDL_keysym *keysym);
