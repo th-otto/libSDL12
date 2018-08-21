@@ -1,21 +1,12 @@
-Important notes:
+History:
+SDL1.2.14WOSb
 
-If you dont need opengl then the agl.library need not load.you can link with -lgl_dummy and the agl.library is not load.
-If you want use SDL with libnix you must link with -lsdl_libnix or you get linker error.
+Added minigl on top of SDL. Needs custom minigl with mglAttachContext, mglDetachContext, MGLMiniTerm.
 
-but: NEVER USE sdl_libnix WITH ixemul because as soon a SDL program call a unix API func(memalloc / fileaccess) in a subthread ixemul crash.
-       So libsdl.a is need and the new V61 and above ixemul to run well. 
+SDL1.2.14WOS
 
-All needed files are in lib dir.
-In bin dir are the files that are need that a configure script detect SDL correct with pkgconfig.copy the files to your bin path.
-when you do crosscompile and have more compilers, be careful i dont know a way how more than 1 pkgconfig can work together.
-
-build of sdl_noixemul:
-
-activate in thread/amigaos/sdl_systhread.c the line 
-#define NOIXEMUL
-
-
+WarpOS release. Removed most of the Apollo code. Fixed an endian problem. Added Altivec support. Added CD-ROM support. Fixed joystick support.
+Makefiles were tested with gcc-mos2wos on Aminet.
 
 -----------------------------
 SDL1.2.14d
@@ -23,11 +14,6 @@ SDL1.2.14d
 H.R: AMMX code for several blitting functions, see video/apollo with runtime selection between plain 68k code and AMMX, see SDL_cgxvideo.c as well
 
 H.R: 18-Apr-2017  _ApolloKeyRGB565toRGB565: disabled AMMX version of ColorKeying (for now, storem is not working in Gold2)
-
-H.R: Nov-2017
-  - some fixes to 32 Bit RGB variants support (not full fix, due to limitations in the cybergraphics color format specifications
-    in comparison to Picasso96)
-  - some fixes to the AHI sound functions
 
 SDL1.2.14c
 

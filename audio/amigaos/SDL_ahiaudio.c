@@ -24,13 +24,14 @@
 
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_ahiaudio.c,v 1.2 2002/11/20 08:51:16 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 /* Allow access to a raw mixing buffer (For IRIX 6.5 and higher) */
 
 #include "SDL_endian.h"
 #include "SDL_audio.h"
+#include "SDL_timer.h"
 #include "../SDL_audiomem.h"
 #include "../SDL_audio_c.h"
 #include "SDL_ahiaudio.h"
@@ -42,12 +43,15 @@ static void AHI_PlayAudio(_THIS);
 static Uint8 *AHI_GetAudioBuf(_THIS);
 static void AHI_CloseAudio(_THIS);
 
-#ifndef __SASC
-	#define mymalloc(x) AllocVec(x,MEMF_PUBLIC)
-	#define myfree FreeVec
-#else
+#if defined(__SASC)
 	#define mymalloc malloc
 	#define myfree free
+#elif defined(WARPOS)
+	#define mymalloc(x) AllocVecPPC(x,MEMF_PUBLIC,32L)
+	#define myfree FreeVecPPC
+#else
+	#define mymalloc(x) AllocVec(x,MEMF_PUBLIC)
+	#define myfree FreeVec
 #endif
 
 
@@ -201,7 +205,7 @@ static void AHI_CloseAudio(_THIS)
 		DeleteIORequest((struct IORequest *)audio_req[0]);
 		audio_req[0]=audio_req[1]=NULL;
 
-		Delay(3); // wait 60 ms to be safe
+		SDL_Delay(49); // wait 60 ms to be safe
 	}
 
 	playing=0;
@@ -236,7 +240,7 @@ static int AHI_OpenAudio(_THIS, SDL_AudioSpec *spec)
 	D(bug("AHI opening...\n"));
 /*    if (spec->channels > 2)
 	{
-		kprintf("More than 2 channels not currently supported, forcing conversion...\n");
+		D(bug("More than 2 channels not currently supported, forcing conversion...\n"));
 		spec->channels = 2;
 	}
 */

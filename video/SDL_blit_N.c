@@ -27,10 +27,6 @@
 #include "SDL_blit.h"
 
 /* Functions to blit from N-bit surfaces to other surfaces */
-#ifdef APOLLO_BLIT
-#include "blitapollo.h"
-#include "colorkeyapollo.h"
-#endif
 
 #if SDL_ALTIVEC_BLITTERS
 #if __MWERKS__
@@ -2162,17 +2158,6 @@ static void BlitNto1Key(SDL_BlitInfo *info)
 
 static void Blit2to2Key(SDL_BlitInfo *info)
 {
-#ifdef APOLLO_BLIT
-	ApolloKeyRGB565toRGB565(	// works with 555, too (unless 1 bit is defined as alpha, ofc)
-				(Uint8 *)info->s_pixels,
-				(Uint8 *)info->d_pixels,
-				info->s_skip,
-				info->d_skip,
-				info->d_width,
-				info->d_height,
-				info->src->colorkey
-	);
-#else
 	int width = info->d_width;
 	int height = info->d_height;
 	Uint16 *srcp = (Uint16 *)info->s_pixels;
@@ -2200,7 +2185,6 @@ static void Blit2to2Key(SDL_BlitInfo *info)
 		srcp += srcskip;
 		dstp += dstskip;
 	}
-#endif
 }
 
 static void BlitNtoNKey(SDL_BlitInfo *info)
@@ -2286,35 +2270,6 @@ static void BlitNtoNKeyCopyAlpha(SDL_BlitInfo *info)
 	}
 }
 
-#ifdef APOLLO_BLIT
-
-#define APOLLOCONVERT( __a__ ) \
-static void Convert##__a__ (SDL_BlitInfo *info);\
-static void Convert##__a__ (SDL_BlitInfo *info) \
-{\
-	__a__( \
-				(Uint8 *)info->s_pixels,\
-				(Uint8 *)info->d_pixels,\
-				info->s_skip,\
-				info->d_skip,\
-				info->d_width,\
-				info->d_height\
-	);\
-}
-
-APOLLOCONVERT( ApolloBGRAtoRGB565   )
-APOLLOCONVERT( ApolloARGBtoRGB565   )
-APOLLOCONVERT( ApolloRGBtoRGB565    )
-APOLLOCONVERT( ApolloBGRtoRGB565    )
-
-APOLLOCONVERT( ApolloARGBtoRGB24    )
-APOLLOCONVERT( ApolloBGRAtoRGB24    )
-APOLLOCONVERT( ApolloBGRtoRGB24     )
-
-APOLLOCONVERT( ApolloARGBtoBGRA     )
-
-#endif
-
 /* Normal N to N optimized blitters */
 struct blit_table {
 	Uint32 srcR, srcG, srcB;
@@ -2357,15 +2312,7 @@ static const struct blit_table normal_blit_2[] = {
     { 0,0,0, 0, 0,0,0, 0, NULL, BlitNtoN, 0 }
 };
 static const struct blit_table normal_blit_3[] = {
-#ifdef APOLLO_BLIT
-    { 0x00FF0000,0x0000FF00,0x000000FF, 2, 0x0000F800,0x000007E0,0x0000001F,
-      0, (void*)(1), ConvertApolloRGBtoRGB565, NO_ALPHA  },
-    { 0x000000FF,0x0000FF00,0x00FF0000, 2, 0x0000F800,0x000007E0,0x0000001F,
-      0, (void*)(1), ConvertApolloBGRtoRGB565, NO_ALPHA  },
-    { 0x000000FF,0x0000FF00,0x00FF0000, 3, 0x00FF0000,0x0000FF00,0x000000FF,
-      0, (void*)(1), ConvertApolloBGRtoRGB24, NO_ALPHA  },
-#endif
-	/* Default for 24-bit RGB source, never optimized */
+    /* Default for 24-bit RGB source, never optimized */
     { 0,0,0, 0, 0,0,0, 0, NULL, BlitNtoN, 0 }
 };
 static const struct blit_table normal_blit_4[] = {
@@ -2397,7 +2344,7 @@ static const struct blit_table normal_blit_4[] = {
     { 0x00FF0000,0x0000FF00,0x000000FF, 4, 0x0000FF00,0x00FF0000,0xFF000000,
       0, ConvertX86p32_32BGRA888, ConvertX86, NO_ALPHA },
 #else
-#if SDL_ALTIVEC_BLITTERS
+#if SDL_ALTIVEC_BLITTERSx
     /* has-altivec | dont-use-prefetch */
     { 0x00000000,0x00000000,0x00000000, 4, 0x00000000,0x00000000,0x00000000,
       6, NULL, ConvertAltivec32to32_noprefetch, NO_ALPHA | COPY_ALPHA | SET_ALPHA },
@@ -2405,23 +2352,8 @@ static const struct blit_table normal_blit_4[] = {
     { 0x00000000,0x00000000,0x00000000, 4, 0x00000000,0x00000000,0x00000000,
       2, NULL, ConvertAltivec32to32_prefetch, NO_ALPHA | COPY_ALPHA | SET_ALPHA },
     /* has-altivec */
-    { 0x00000000,0x00000000,0x00000000, 2, 0x0000F800,0x000007E0,0x0000001F,
-      2, NULL, Blit_RGB888_RGB565Altivec, NO_ALPHA },
-#endif
-#ifdef APOLLO_BLIT
     { 0x00FF0000,0x0000FF00,0x000000FF, 2, 0x0000F800,0x000007E0,0x0000001F,
-      0, (void*)(1), ConvertApolloARGBtoRGB565, NO_ALPHA  },
-    { 0x0000FF00,0x00FF0000,0xFF000000, 2, 0x0000001F,0x000007E0,0x0000F800,
-      0, (void*)(1), ConvertApolloBGRAtoRGB565, NO_ALPHA  },
-    { 0x00FF0000,0x0000FF00,0x000000FF, 3, 0x00FF0000,0x0000FF00,0x000000FF,
-      0, (void*)(1), ConvertApolloARGBtoRGB24, NO_ALPHA  },
-    { 0x0000FF00,0x00FF0000,0xFF000000, 3, 0x00FF0000,0x0000FF00,0x000000FF,
-      0, (void*)(1), ConvertApolloBGRAtoRGB24, NO_ALPHA  },
-
-    { 0x0000FF00,0x00FF0000,0xFF000000, 4, 0x00FF0000,0x0000FF00,0x000000FF,
-      0, (void*)(1), ConvertApolloARGBtoBGRA, NO_ALPHA  },
-    { 0x00FF0000,0x0000FF00,0x000000FF, 4, 0x0000FF00,0x00FF0000,0xFF000000,
-      0, (void*)(1), ConvertApolloARGBtoBGRA, NO_ALPHA  },
+      2, NULL, Blit_RGB888_RGB565Altivec, NO_ALPHA },
 #endif
     { 0x00FF0000,0x0000FF00,0x000000FF, 2, 0x0000F800,0x000007E0,0x0000001F,
       0, NULL, Blit_RGB888_RGB565, NO_ALPHA },
@@ -2451,17 +2383,6 @@ SDL_loblit SDL_CalculateBlitN(SDL_Surface *surface, int blit_index)
 	sdata = surface->map->sw_data;
 	srcfmt = surface->format;
 	dstfmt = surface->map->dst->format;
-
-#ifdef APOLLO_BLITDBG
-	printf("SDL_CalculateBlitN from BPP %d to BPP %d blit_index %d AMask %x ",srcfmt->BytesPerPixel,dstfmt->BytesPerPixel,blit_index,srcfmt->Amask);
-	printf("Src %x %x %x Dst %x %x %x\n",
-		     srcfmt->Rmask,
-		     srcfmt->Gmask,
-		     srcfmt->Bmask,
-		     dstfmt->Rmask,
-		     dstfmt->Gmask,
-		     dstfmt->Bmask );
-#endif
 
 	if ( blit_index & 2 ) {
 	        /* alpha or alpha+colorkey */
@@ -2551,26 +2472,6 @@ SDL_loblit SDL_CalculateBlitN(SDL_Surface *surface, int blit_index)
 		}
 	}
 
-#ifdef APOLLO_BLITDBG
-	if( sdata->aux_data == (void*)(1) )
-	{
-		printf("AMMX blit ");
-	}
-	else
-	{
-		printf("C blit    ");
-	}
-	printf("Src %x %x %x @BPP%d  Dst %x %x %x @BPP %d\n",
-		     srcfmt->Rmask,
-		     srcfmt->Gmask,
-		     srcfmt->Bmask,
-		     srcfmt->BytesPerPixel,
-		     dstfmt->Rmask,
-		     dstfmt->Gmask,
-		     dstfmt->Bmask,
-		     dstfmt->BytesPerPixel
-		     );
-#endif
 #ifdef DEBUG_ASM
 #if SDL_HERMES_BLITTERS
 	if ( blitfun == ConvertMMX )

@@ -22,7 +22,7 @@
 #include <SDL_config.h>
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_cgxaccel.c,v 1.2 2002/11/20 08:51:36 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 //#include "SDL_error.h"
@@ -189,7 +189,7 @@ int CGX_SetHWColorKey(_THIS,SDL_Surface *surface, Uint32 key)
 int CGX_CheckHWBlit(_THIS,SDL_Surface *src,SDL_Surface *dst)
 {
 // Doesn't support yet alpha blitting
-	//kprintf("HW blit\n");
+	D(bug("HW blit\n"));
 	if (this->hidden->swap_bytes)return 0;
 	if(src->hwdata&& !(src->flags & (SDL_SRCALPHA)))
 	{
@@ -223,8 +223,7 @@ static int CGX_HWAccelBlit(SDL_Surface *src, SDL_Rect *srcrect,
 					SDL_Surface *dst, SDL_Rect *dstrect)
 {
 	struct SDL_VideoDevice *this=src->hwdata->videodata;
-//	D(bug("Accel blit!\n"));
-    //kprintf("Accel blit\n");
+	D(bug("Accel blit!\n"));
 	if(src->flags&SDL_SRCCOLORKEY && src->hwdata->mask)
 	{
 		if(dst==SDL_VideoSurface)
@@ -288,7 +287,7 @@ int CGX_FillHWRect(_THIS,SDL_Surface *dst,SDL_Rect *dstrect,Uint32 color)
 			InitRastPort(&temprp);
 			temprp_init=1;
 		}
-        //kprintf("color %lx \n",color);
+        D(bug("color %lx \n",color));
 		
 		temprp.BitMap=(struct BitMap *)dst->hwdata->bmap;
 		if (temprp.BitMap == 0)temprp.BitMap = SDL_RastPort->BitMap;
@@ -301,7 +300,7 @@ int CGX_FillHWRect(_THIS,SDL_Surface *dst,SDL_Rect *dstrect,Uint32 color)
 			        RectFill(&temprp,dstrect->x,dstrect->y,dstrect->w + dstrect->x ,dstrect->h + dstrect->y);
 					this->screen->hwdata->lock=LockBitMapTags(temprp.BitMap,LBMI_BASEADDRESS,(ULONG)&this->screen->pixels,
 					TAG_DONE);
-		    return ;
+		    return 0;
 			}
 			SetAPen(&temprp,color);
 			        RectFill(&temprp,dstrect->x,dstrect->y,dstrect->w + dstrect->x ,dstrect->h + dstrect->y);

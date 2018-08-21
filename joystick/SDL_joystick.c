@@ -26,6 +26,7 @@
 #include "SDL_events.h"
 #include "SDL_sysjoystick.h"
 #include "SDL_joystick_c.h"
+#include "SDL_timer.h"
 #if !SDL_EVENTS_DISABLED
 #include "../events/SDL_events_c.h"
 #endif

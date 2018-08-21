@@ -22,17 +22,19 @@
 #define BITMAPMEM
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_cgximage.c,v 1.2 2002/11/20 08:51:42 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 #include <stdlib.h>
 #ifndef _HAVE_STDINT_H
-#include <machine/types.h>
+#include <sys/types.h>
 #endif
 #include "SDL_config.h"
 #include "SDL_error.h"
 #include "SDL_endian.h"
 #include "SDL_cgximage_c.h"
+#include "mydebug.h"
+#include "SDL_cgxasm.h"
 
 #ifdef HAVE_KSTAT
 #include <kstat.h>
@@ -75,8 +77,6 @@ static void WLPA(SDL_Surface *s,SDL_Rect *rect,struct RastPort *rp,APTR colortab
 
 static void WLPA(SDL_Surface *s,SDL_Rect *rect,struct RastPort *rp,APTR colortable,struct Window *win)
 {
-	kprintf(".");
-
 	WriteLUTPixelArray(s->pixels,rect->x, rect->y,s->pitch,rp,colortable,
 		win->BorderLeft+rect->x,win->BorderTop+rect->y,rect->w,rect->h,CTABFMT_XRGB8);
 }
@@ -93,14 +93,18 @@ int use_picasso96 = 0;
 
 Uint32 SDL_Swap2x16_b(Uint32 x)
 {
-#ifdef APOLLO_BLIT
+#if defined(WARPOS)
+	Uint32 resultx;
+	Uint32 dummy;
+	__asm__("rlwinm %2,%1,8,0,31\n\trlwimi %2,%1,24,8,15\n\trlwimi %2,%1,24,24,31\n\tmr %0,%2\t\n" : "=r" (resultx) : "r" (x), "r" (dummy));
+	return resultx;
+#else	
 	__asm__("rorw #8,%0\n\tswap %0\n\trorw #8,%0\n\tswap %0\t\n" : "=d" (x) :  "0" (x) : "cc");
-#else
-	x = (x>>24) | ((x>>8)&0xff00) | ((x<<8)&0xff0000) | (x<<24);
-#endif
 	return x;
+#endif
 }
 
+#if 0
 void bcopy_swap2(APTR dst, APTR src, int size)
 {
 	Uint32 *s; 
@@ -145,6 +149,8 @@ void bcopy_swap2(APTR dst, APTR src, int size)
 	
 }
 
+#endif
+
 int CGX_SetupImage(_THIS, SDL_Surface *screen)
 {
     ULONG pitch;
@@ -155,12 +161,14 @@ int CGX_SetupImage(_THIS, SDL_Surface *screen)
 	if(screen->flags&SDL_HWSURFACE) 
 	{
 		if (this->hidden->swap_bytes && this->hidden->depth == 16)
-		{ kprintf ("Slow 16 bit pixel swap need better use a rgb16 screenmode \n");
+		{ 
+		D(bug("Slow 16 bit pixel swap need better use a rgb16 screenmode \n"));
 		format = BMF_DISPLAYABLE | BMF_MINPLANES| BMF_SPECIALFMT|(PIXFMT_RGB16<< 24);
 		friendbmap = 0;
 		}	
 	if (this->hidden->swap_bytes && this->hidden->depth == 32)
-		{ kprintf ("Slow 32 bit pixel swap need better use a BGRA Screenmode \n");
+		{ 
+		D(bug("Slow 32 bit pixel swap need better use a BGRA Screenmode \n"));
 		format = BMF_DISPLAYABLE | BMF_MINPLANES| BMF_SPECIALFMT|(PIXFMT_BGRA32<< 24);
 		friendbmap = 0;
 		}
@@ -179,16 +187,21 @@ int CGX_SetupImage(_THIS, SDL_Surface *screen)
 	//if ((!screen->flags&SDL_FULLSCREEN))
 	{    
 		if (AvailMem(MEMF_LARGEST) < (screen->w * screen->h * (this->hidden->depth /8) + 500000))
-		{kprintf("too few RAM for other bitmap \n");return -1;
+		{
+		D(bug("not enough RAM for other bitmap \n"));
+		return -1;
 		}
 		if (!(this->hidden->bmap=AllocBitMap(screen->w,screen->h,this->hidden->depth,format,friendbmap)))
 		   {
 			format &= ~BMF_DISPLAYABLE;	
 			if (!(this->hidden->bmap=AllocBitMap(screen->w,screen->h,this->hidden->depth,format,friendbmap)))
-            {kprintf ("cant alloc Bitmap\n");return -1;}	
+            {
+            D(bug("Cannot allocate Bitmap\n"));
+            return -1;
+            }	
 		   }
         screen->hwdata->bmap = this->hidden->bmap;
-        kprintf ("before lock %lx\n",screen->hwdata->bmap );	
+	D(bug("before lock %lx\n",screen->hwdata->bmap));	
 		if(!(screen->hwdata->lock=LockBitMapTags(screen->hwdata->bmap,
 				LBMI_BASEADDRESS,(ULONG)&screen->pixels,
 				LBMI_BYTESPERROW,(ULONG)&pitch,TAG_DONE))) {
@@ -200,7 +213,7 @@ int CGX_SetupImage(_THIS, SDL_Surface *screen)
 			UnLockBitMap(screen->hwdata->lock);
 			screen->hwdata->lock=NULL;
 		}
-		kprintf ("after lock\n");
+	D(bug("after lock\n"));
      screen->pitch=pitch;
      this->UpdateRects = CGX_NormalUpdate;
 	 return 0;
@@ -221,8 +234,7 @@ int CGX_SetupImage(_THIS, SDL_Surface *screen)
 		
      this->UpdateRects = (void (*)(_THIS, int numrects, SDL_Rect *rects) )CGX_FlipHWSurface; 
 		 screen->pitch=pitch;
-
-        kprintf("HWSURFACE create\n");
+		D(bug("HWSURFACE create\n"));
 		D(bug("Accel video image configured (%lx, pitch %ld).\n",screen->pixels,screen->pitch));
 		return 0;
 	}
@@ -399,7 +411,7 @@ void CGX_UnlockHWSurface(_THIS, SDL_Surface *surface)
 	{
 		UnLockBitMap(surface->hwdata->lock);
 		surface->hwdata->lock=NULL;
-		//kprintf("%lx\n",surface->pixels);
+		D(bug("%lx\n",surface->pixels));
 		//surface->pixels=0xdeadbeef;
 	}
 }
@@ -413,7 +425,7 @@ int CGX_FlipHWSurface(_THIS, SDL_Surface *surface)
 		toggle =0;
 	}*/
 	static int current=0;
-    //kprintf("before change\n"); 
+	D(bug("Before change\n")); 
 	//surface->hwdata->bmap=SDL_RastPort->BitMap=this->hidden->SB[current]->sb_BitMap;
 	
 	if(this->hidden->dbuffer) // currently deactivate
@@ -454,8 +466,7 @@ int CGX_FlipHWSurface(_THIS, SDL_Surface *surface)
 				;
 			SafeChange=TRUE;
 		}
-       //kprintf("before change2\n"); 
-       //TRAP
+		D(bug("Before change 2\n")); 
 	        ret = ChangeScreenBuffer(SDL_Display,this->hidden->SB[current^1]);
 	   
 		{
@@ -464,7 +475,7 @@ int CGX_FlipHWSurface(_THIS, SDL_Surface *surface)
 			SafeDisp=FALSE;
 			current^=1;
 		}
-		//kprintf("after change\n");
+		D(bug("After change\n"));
 		
 		if(!SafeDisp)
 		{
@@ -474,7 +485,7 @@ int CGX_FlipHWSurface(_THIS, SDL_Surface *surface)
 			SafeDisp=TRUE;
 		}
 		//SDL_Delay(1);
-        //kprintf("after change2\n");
+		D(bug("After change 2\n"));
 	 } /* dbscrollscreen */
 	}
 	return(0);
@@ -622,9 +633,6 @@ static void CGX_NormalUpdate(_THIS, int numrects, SDL_Rect *rects)
 		
       return;
 	}
-#ifdef APOLLO_BLITDBG
-	printf("CGX_NormalUpdate: Screen Flags %x format BPP %d software swap pixels\n",this->screen->flags,this->screen->format->BytesPerPixel);
-#endif
 
 	//if(this->hidden->same_format && !use_picasso96  && !this->hidden->swap_bytes)
 	//{
@@ -869,14 +877,7 @@ static void CGX_NormalUpdate(_THIS, int numrects, SDL_Rect *rects)
 		APTR handle;
 
 //		D(bug("Using customroutine!\n"));
-#ifdef APOLLO_BLITDBG
-		{
-		 int tst1 = (this->hidden->bmap) ? 1 : 0 ;
-		 int tst2 = (this->hidden->swap_bytes) ? 1 : 0;
 
-		 printf("CGX_NormalUpdate 16 Bit hiddenbmap %d swapbytes %d\n",tst1,tst2);
-		}
-#endif
 		if (!this->hidden->bmap)
 		{
 			handle=LockBitMapTags(SDL_RastPort->BitMap,LBMI_BASEADDRESS,(ULONG)&bm_address,
@@ -933,7 +934,7 @@ static void CGX_NormalUpdate(_THIS, int numrects, SDL_Rect *rects)
 					
 				        if (this->hidden->swap_bytes)
 					{
-			                    bcopy_swap2(dest,src,srcwidth);   
+						copy_and_swap16(src, dest, srcwidth / 2);   
 					}
 					else
 					{
@@ -951,12 +952,6 @@ static void CGX_NormalUpdate(_THIS, int numrects, SDL_Rect *rects)
 	}
 	else
 	{
-#ifdef APOLLO_BLITDBG
-		{
-		 printf("CGX_NormalUpdate 24/32 Bit WPA\n");
-		}
-#endif
-
 		for ( i=0; i<numrects; ++i ) {
 			if ( ! rects[i].w ) { /* Clipped? */
 				continue;
@@ -1002,9 +997,7 @@ void CGX_RefreshDisplay(_THIS)
 						this->screen->w,this->screen->h,0xc0);
       		return;
 	}
-#ifdef APOLLO_BLITDBG
-	printf("CGX_RefreshDisplay: Screen Flags %x format BPP %d software swap pixels\n",this->screen->flags,this->screen->format->BytesPerPixel);
-#endif
+
 	/*if(this->hidden->same_format && !use_picasso96)
 	{
 		format=RECTFMT_RAW;

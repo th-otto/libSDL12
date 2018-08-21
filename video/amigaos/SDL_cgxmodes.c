@@ -22,7 +22,7 @@
 
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_cgxmodes.c,v 1.2 2002/11/20 08:51:47 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 /* Utilities for getting and setting the X display mode */
@@ -39,11 +39,11 @@ static char rcsid =
 #include "SDL_cgxvideo.h"
 #include "SDL_cgxwm_c.h"
 #include "SDL_cgxmodes_c.h"
+#include "mydebug.h"
 
-#ifdef AROS
+//#ifdef AROS
 #include "SDL_cgximage_c.h"
-#include <stdlib.h>
-#endif
+//#endif
 
 #define CGX_DEBUG
 
@@ -59,7 +59,7 @@ static void set_best_resolution(_THIS, int width, int height)
 				CYBRBIDTG_NominalHeight,height,
 				CYBRBIDTG_Depth,depth,
 				TAG_DONE);
-     kprintf(" depth %ld display id %ld \n",depth,idok);
+	D(bug(" depth %ld display id %ld \n",depth,idok));
 	if(idok!=INVALID_ID)
 	{
 		if(SDL_Display)
@@ -162,7 +162,7 @@ int CGX_GetVideoModes(_THIS)
 							SDL_modelist[nmodes-1]->y = 0; 
 							SDL_modelist[nmodes-1]->w = info.Nominal.MaxX+1;
 							SDL_modelist[nmodes-1]->h = info.Nominal.MaxY+1;
-							//kprintf("%ld\n",info.Nominal.MaxX);
+							D(bug("%ld\n",info.Nominal.MaxX));
 						}
 					}
 				}
@@ -205,7 +205,7 @@ int CGX_GetVideoModes(_THIS)
                 SDL_modelist[i]->w = SDL_Display->Width;
                 SDL_modelist[i]->h = SDL_Display->Height;
                 ++i;
-				//kprintf("%ld\n",(long)SDL_Display->Width);
+		D(bug("%ld\n",(long)SDL_Display->Width));
             }
             SDL_modelist[i] = NULL;
         }

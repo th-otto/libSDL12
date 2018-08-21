@@ -22,7 +22,11 @@
 
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_systhread_c.h,v 1.2 2002/11/20 08:52:37 gabry Exp $";
+ "@(#) $Id$";
+#endif
+
+#if defined(WARPOS)
+#pragma pack(2)
 #endif
 
 #include <exec/exec.h>
@@ -32,14 +36,14 @@ static char rcsid =
 #include <proto/dos.h>
 #include <proto/exec.h>
 #else
-#ifdef MORPHOS
-#include <ppcinline/dos.h>
-#include <ppcinline/exec.h>
-#else
 #include <inline/dos.h>
 #include <inline/exec.h>
 #endif
-#endif
+
+extern struct ExecBase *SysBase;
+extern struct DosLibrary *DOSBase;
+
+#pragma pack()
 
 #include <stdio.h>
 #ifndef AROS
@@ -48,26 +52,41 @@ static char rcsid =
 #include <string.h>
 #include "../../mydebug.h"
 
-extern struct ExecBase *SysBase;
-extern struct DosLibrary *DOSBase;
 
 #ifdef WARPOS
-#include <proto/powerpc.h>
+#include <powerpc/powerpc.h>
+#include <powerpc/semaphoresPPC.h>
 
-/* use powerpc.library functions instead og exec */
+/* use powerpc.library functions instead of exec */
 #define SYS_ThreadHandle struct TaskPPC *
+
+#undef Signal
+#undef Wait
+#undef Task
+#undef FindTask
+#undef SetSignal
+#undef InitSemaphore
+#undef ObtainSemaphore
+#undef AttemptSemaphore
+#undef ReleaseSemaphore
+#undef SignalSemaphore
+#undef AllocSignal
+#undef FreeSignal
+#undef ObtainSemaphoreShared
+
 #define Signal SignalPPC
 #define Wait WaitPPC
 #define Task TaskPPC
 #define FindTask FindTaskPPC
 #define SetSignal SetSignalPPC
-
 #define InitSemaphore InitSemaphorePPC
 #define ObtainSemaphore ObtainSemaphorePPC
 #define AttemptSemaphore AttemptSemaphorePPC
 #define ReleaseSemaphore ReleaseSemaphorePPC
 #define SignalSemaphore SignalSemaphorePPC
-
+#define AllocSignal AllocSignalPPC
+#define FreeSignal FreeSignalPPC
+#define ObtainSemaphoreShared ObtainSemaphoreSharedPPC
 #else
 
 #define SYS_ThreadHandle struct Task *

@@ -22,11 +22,19 @@
 #ifdef AROS
 #  define _STRUCT_TIMEVAL	1
 #endif
+
+#if defined(WARPOS)
+#pragma pack(2)
+#include <proto/dos.h>
+#include <proto/keymap.h>
+#pragma pack()
+#endif
+
 long _sdl_no_lower_taskpri;
 long _sdl_audiovolume;
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_amigaevents.c,v 1.2 2008/11/20 08:51:17 roesch bernd Exp $";
+ "@(#) $Id$";
 #endif
 #include "SDL_config.h"
 /* Handle the event stream, converting Amiga events into SDL events */
@@ -43,11 +51,6 @@ static char rcsid =
 
 #include "SDL_amigaevents_c.h"
 
-#include <proto/dos.h>
-#include <proto/keymap.h>
-#include <inline/dos.h>
-#include <inline/keymap.h>
-
 /* The translation tables from an Amiga keysym to a SDL keysym */
 static SDLKey MISC_keymap[256];
 SDL_keysym *amiga_TranslateKey(int code, int qual, SDL_keysym *keysym);
@@ -61,15 +64,10 @@ struct MsgPort *ConPort=NULL;
 */
 #define MOUSE_FUDGE_FACTOR	8
 
-SDL_AmigaNoLowerTaskpri ()
+void SDL_AmigaNoLowerTaskpri ()
 {
 _sdl_no_lower_taskpri = 1;	
 }
-
-SDL_bool SDL_HasMMX(void)
-{
-	return SDL_FALSE;
-} 
 
 //extern size_t SDL_strlcpy(char *, const char *, size_t);
 /*
@@ -185,7 +183,7 @@ static int amiga_DispatchEvent(_THIS,struct IntuiMessage *msg)
 	int class=msg->Class,code=msg->Code;
 	int posted;
 	int qual = msg->Qualifier;
-	APTR  *fh =0;
+	BPTR  fh = 0;
 
 	posted = 0;
 
@@ -435,7 +433,7 @@ void amiga_PumpEvents(_THIS)
 {
 	int pending;
 	struct IntuiMessage *m;
-	if ((!SDL_Window) || (!SDL_Window->UserPort))return 0;
+	if ((!SDL_Window) || (!SDL_Window->UserPort))return;
     mousex = -16000; // to collect only the last mousepos and detect if a mousemove have come.
 	mousey = -16000;
 	/* Keep processing pending events */
@@ -646,7 +644,7 @@ SDL_keysym *amiga_TranslateKey(int code, int qual,SDL_keysym *keysym)
 			event.ie_NextEvent=NULL;
 			event.ie_Prev1DownCode=event.ie_Prev1DownQual=event.ie_Prev2DownCode=event.ie_Prev2DownQual=0;
 
-			#ifdef STORMC4_WOS
+			#ifdef WARPOS
 			if( (actual=MapRawKey(&event,buffer,5,NULL))>=0)
 			#else
 			if( (actual=RawKeyConvert(&event,buffer,5,NULL))>=0)

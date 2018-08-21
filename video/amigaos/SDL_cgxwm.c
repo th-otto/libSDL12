@@ -25,7 +25,7 @@
 #include <SDL_config.h>
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_cgxwm.c,v 1.2 2002/11/20 08:51:53 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 #include "SDL/SDL_config.h"

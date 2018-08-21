@@ -22,7 +22,7 @@
 
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_thread.c,v 1.2 2002/11/20 08:52:39 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 /* System independent thread management routines for SDL */
@@ -35,7 +35,7 @@ static char rcsid =
 #include "SDL_mutex.h"
 #include "SDL_thread.h"
 #include "../SDL_thread_c.h"
-//#include "SDL_systhread.h"
+#include "../SDL_systhread.h"
 
 #define ARRAY_CHUNKSIZE	32
 /* The array of threads currently active in the application

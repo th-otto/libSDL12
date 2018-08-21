@@ -1,6 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
-    Copyright (C) 1997-2009 Sam Lantinga
+    Copyright (C) 1997-2012 Sam Lantinga
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -20,7 +20,7 @@
     slouken@libsdl.org
 */
 #include "SDL_config.h"
-
+#include "amigaos/SDL_cgxasm.h"
 /* 
    Code to load and save surfaces in Windows BMP format.
 
@@ -132,6 +132,17 @@ SDL_Surface * SDL_LoadBMP_RW (SDL_RWops *src, int freesrc)
 		biClrUsed	= SDL_ReadLE32(src);
 		biClrImportant	= SDL_ReadLE32(src);
 	}
+
+	/* stop some compiler warnings. */
+	(void) bfSize;
+	(void) bfReserved1;
+	(void) bfReserved2;
+	(void) biPlanes;
+	(void) biSizeImage;
+	(void) biXPelsPerMeter;
+	(void) biYPelsPerMeter;
+	(void) biClrImportant;
+
 	if (biHeight < 0) {
 		topDown = SDL_TRUE;
 		biHeight = -biHeight;
@@ -302,15 +313,23 @@ SDL_Surface * SDL_LoadBMP_RW (SDL_RWops *src, int freesrc)
 				case 15:
 				case 16: {
 				        Uint16 *pix = (Uint16 *)bits;
+					#if defined(__MORPHOS__)
+					copy_and_swap16(pix, pix, surface->w);
+					#else
 					for(i = 0; i < surface->w; i++)
 					        pix[i] = SDL_Swap16(pix[i]);
+					#endif
 					break;
 				}
 
 				case 32: {
 				        Uint32 *pix = (Uint32 *)bits;
+					#if defined(__MORPHOS__)
+					copy_and_swap32(pix, pix, surface->w);
+					#else
 					for(i = 0; i < surface->w; i++)
 					        pix[i] = SDL_Swap32(pix[i]);
+					#endif
 					break;
 				}
 			}

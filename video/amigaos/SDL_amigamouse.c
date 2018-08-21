@@ -22,12 +22,12 @@
 #include <SDL_config.h>
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_amigamouse.c,v 1.2 2002/11/20 08:51:19 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 //#include "SDL_error.h"
 //#include "SDL_mouse.h"
-//#include "SDL_events_c.h"
+#include "../../events/SDL_events_c.h"
 //#include "SDL_cursor_c.h"
 #include "SDL_amigamouse_c.h"
 

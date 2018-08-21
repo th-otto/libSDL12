@@ -39,9 +39,6 @@
 #include "mmx.h"
 #endif
 
-#ifdef APOLLO_BLIT
-#include "blitapollo.h"
-#endif
 //surface->map->sw_blit = SDL_SoftBlit
 //surface->map->sw_data->blit = SDL_BlitCopy;
 
@@ -162,12 +159,6 @@ static __inline__ void SDL_memcpySSE(Uint8 *to, const Uint8 *from, int len)
 
 static void SDL_BlitCopy(SDL_BlitInfo *info)
 {
-#ifdef APOLLO_BLIT
-	ApolloCopyRect( info->s_pixels, info->d_pixels,
-			info->s_skip, info->d_skip,
-			info->d_width*info->dst->BytesPerPixel,
-			info->d_height );
-#else
 	Uint8 *src, *dst;
 	int w, h;
 	int srcskip, dstskip;
@@ -212,7 +203,6 @@ static void SDL_BlitCopy(SDL_BlitInfo *info)
 		src += srcskip;
 		dst += dstskip;
 	}
-#endif
 }
 
 static void SDL_BlitCopyOverlap(SDL_BlitInfo *info)

@@ -1,7 +1,6 @@
 /*
     SDL - Simple DirectMedia Layer
     Copyright (C) 1997, 1998, 1999, 2000, 2001, 2002  Sam Lantinga
-    Copyright (C) 2004  Harry Sintonen
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Library General Public
@@ -19,99 +18,24 @@
 
     Sam Lantinga
     slouken@libsdl.org
-
-    Harry Sintonen
-    sintonen@iki.fi
-
-		20040824	Non-polling SDL_SemWaitTimeout
-				Optimized
-
-		20040822	Reimplementation. Improvements:
-				- initial_value != 1 works properly
-				- wait can be aborted via CTRL-C
-				- doesn't nest per task
-
-		20040513	SDL_SemTryWait() function return value fixed
-
-		20040510	ObtainSemaphore inserted in SDL_SemWaitTimeout
-
-		20040504	Debug lines added
-				WarpOS code removed
-
 */
-#include <SDL_config.h>
+
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_syssem.c,v 1.2 2007/01/13 11:04:43 itix Exp $";
+ "@(#) $Id$";
 #endif
 
-#include <stdlib.h> /* for malloc/free */
+/* An implementation of semaphores using mutexes and condition variables */
 
-#ifndef NO_AMIGADEBUG
-#define NO_AMIGADEBUG
-#endif
-#ifdef MORPHOS
-#include <ppcinline/exec.h>
-#else
-#include <inline/exec.h>
-#include <proto/dos.h>
-#include <inline/dos.h>
-#endif
 #include "SDL_error.h"
 #include "SDL_thread.h"
 #include "SDL_systhread_c.h"
-//#include "SDL_systimer.h"
+#include "SDL_timer.h"
 
-//#include <exec/semaphores.h>
-#include <devices/timer.h>
-//#include <dos/dos.h>
+#ifdef _AROS
+#include <stdlib.h>
+#endif
 
-
-#define NEWLIST(_l)                              \
-do                                               \
-{                                                \
-     struct List *l = (struct List *)(_l);        \
-                                                  \
-     l->lh_TailPred = (struct Node *)l;           \
-     l->lh_Tail     = 0;                          \
-     l->lh_Head     = (struct Node *)&l->lh_Tail; \
-} while (0)
-
-#define ADDHEAD(_l,_n)                                \
-do                                                    \
-{                                                     \
-     struct Node *n = (struct Node *)(_n);             \
-     struct List *l = (struct List *)(_l);             \
-                                                       \
-     n->ln_Succ          = l->lh_Head;                 \
-     n->ln_Pred          = (struct Node *)&l->lh_Head; \
-     l->lh_Head->ln_Pred = n;                          \
-     l->lh_Head          = n;                          \
-} while (0)
-
-#define ADDTAIL(_l,_n)                                    \
-do                                                        \
-{                                                         \
-     struct Node *n = (struct Node *)(_n);                 \
-     struct List *l = (struct List *)(_l);                 \
-                                                           \
-     n->ln_Succ              = (struct Node *)&l->lh_Tail; \
-     n->ln_Pred              = l->lh_TailPred;             \
-     l->lh_TailPred->ln_Succ = n;                          \
-     l->lh_TailPred          = n;                          \
-} while (0)
-
-#define REMOVE(_n)                        \
-do                                        \
-{                                         \
-     struct Node *n = (struct Node *)(_n); \
-                                           \
-     n->ln_Pred->ln_Succ = n->ln_Succ;     \
-     n->ln_Succ->ln_Pred = n->ln_Pred;     \
-} while (0)
-
-
-extern struct timerequest	*TimerReq[2];
 
 struct waitnode
 {
@@ -127,108 +51,11 @@ struct SDL_semaphore
 	int                    sem_value;
 };
 
-struct mywaitdata
-{
-	struct MsgPort      port;
-	struct timerequest  timereq;
-	ULONG               extramask;
-	BOOL                pending;
-};
-
 #define FALLBACKSIGNAL SIGBREAKB_CTRL_E
 
-static
-void mywaitdone(struct mywaitdata *data)
-{
-	if (data->pending)
-	{
-		data->pending = FALSE;
-		AbortIO((struct IORequest *) &data->timereq);
-		WaitIO((struct IORequest *) &data->timereq);
-	}
+#undef D
 
-	if ((BYTE) data->port.mp_SigBit != -1)
-	{
-		FreeSignal(data->port.mp_SigBit);
-		data->port.mp_SigBit = (UBYTE) -1;
-	}
-	CloseDevice( (struct IORequest *) &data->timereq );
-}
-
-static
-int mywaitinit(struct mywaitdata *data, Uint32 timeout)
-{
-   int error;
-
-	data->extramask = 0;
-	data->pending   = FALSE;
- 	if ((BYTE) (data->port.mp_SigBit = AllocSignal(-1)) != -1)
-	{
-		struct timerequest *req = TimerReq[timeout < 100]; /* 0 = VBlank, 1 = MicroHz */
-
-		data->port.mp_Node.ln_Type = NT_MSGPORT;
-		data->port.mp_Flags        = PA_SIGNAL;
-		data->port.mp_SigTask      = FindTask(NULL);
-		NEWLIST(&data->port.mp_MsgList);
-
-		data->timereq.tr_node.io_Message.mn_Node.ln_Type = NT_REPLYMSG;
-		data->timereq.tr_node.io_Message.mn_ReplyPort    = &data->port;
-		data->timereq.tr_node.io_Message.mn_Length       = sizeof(data->timereq);
-		error = OpenDevice( TIMERNAME, UNIT_MICROHZ,(struct IORequest *) &data->timereq, 0L );
-		if (error)kprintf("cant open timer device\n");
-		//data->timereq.tr_node.io_Device                  = req->tr_node.io_Device;
-		//data->timereq.tr_node.io_Unit                    = req->tr_node.io_Unit;
-
-		return 0;
-	}
-
-	mywaitdone(data);
-
-	return -1;
-}
-
-static
-int mywait(struct mywaitdata *data, Uint32 timeout)
-{
-	ULONG wsig, sigs;
-
-	wsig = 1 << data->timereq.tr_node.io_Message.mn_ReplyPort->mp_SigBit;
-
-	if (!data->pending)
-	{
-		data->pending = TRUE;
-		data->timereq.tr_node.io_Command = TR_ADDREQUEST;
-		data->timereq.tr_time.tv_secs  = timeout / 1000;
-		data->timereq.tr_time.tv_micro = (timeout % 1000) * 1000;
-		SendIO((struct IORequest *) &data->timereq);
-	}
-
-	sigs = Wait(wsig | data->extramask | SIGBREAKF_CTRL_C);
-
-	if (sigs & wsig)
-	{
-		data->pending = FALSE;
-		WaitIO((struct IORequest *) &data->timereq);
-	}
-	else
-	{
-		if (data->pending && data->extramask == 0)
-		{
-			data->pending = FALSE;
-			AbortIO((struct IORequest *) &data->timereq);
-			WaitIO((struct IORequest *) &data->timereq);
-		}
-	}
-
-	data->extramask &= sigs;
-
-	if (sigs & SIGBREAKF_CTRL_C)
-	{
-		return -1;
-	}
-
-	return 0;
-}
+#define D(x)
 
 /* Create a semaphore, initialized with value */
 SDL_sem *SDL_CreateSemaphore(Uint32 initial_value)
@@ -255,6 +82,7 @@ SDL_sem *SDL_CreateSemaphore(Uint32 initial_value)
 	return sem;
 }
 
+
 void SDL_DestroySemaphore(SDL_sem *sem)
 {
 	D(bug("[SDL] SDL_DestroySemaphore()\n"));
@@ -262,50 +90,40 @@ void SDL_DestroySemaphore(SDL_sem *sem)
 
 	if (sem)
 	{
-		#if 1
 
-		struct mywaitdata data;
+		ObtainSemaphore(&sem->sem);
 
-		if (mywaitinit(&data, 10) == 0)
+		sem->sem_value = -1;
+
+		while (!IsListEmpty((struct List *) &sem->waitlist))
 		{
-			ObtainSemaphore(&sem->sem);
+			struct waitnode *wn;
+			int res;
 
-			sem->sem_value = -1;
+			D(bug("[SDL] bug, semaphore %lx busy!\n", sem));
 
-			while (!IsListEmpty((struct List *) &sem->waitlist))
+			for (wn = (struct waitnode *) sem->waitlist.mlh_Head;
+			     wn->node.mln_Succ;
+			     wn = (struct waitnode *) wn->node.mln_Succ)
 			{
-				struct waitnode *wn;
-				int res;
-
-				D(bug("[SDL] bug, semaphore %lx busy!\n", sem));
-
-				for (wn = (struct waitnode *) sem->waitlist.mlh_Head;
-				     wn->node.mln_Succ;
-				     wn = (struct waitnode *) wn->node.mln_Succ)
-				{
-					Signal(wn->task, wn->sigmask);
-				}
-
-				ReleaseSemaphore(&sem->sem);
-                Delay(2);
-				res = mywait(&data, 10);
-
-				ObtainSemaphore(&sem->sem);
-
-				if (res < 0)
-				{
-					break;
-				}
+				Signal(wn->task, wn->sigmask);
 			}
 
 			ReleaseSemaphore(&sem->sem);
+
+			res = WaitTime(SIGBREAKF_CTRL_C,10000);
+
+			ObtainSemaphore(&sem->sem);
+
+			if (res & SIGBREAKF_CTRL_C)
+			{
+				break;
+			}
 		}
 
-		mywaitdone(&data);
+		ReleaseSemaphore(&sem->sem);
 
-		#endif
-
-		free(sem);
+	free(sem);
 	}
 }
 
@@ -418,7 +236,6 @@ int SDL_SemWait(SDL_sem *sem)
 
 int SDL_SemWaitTimeout(SDL_sem *sem, Uint32 timeout)
 {
-	struct mywaitdata data;
 	int retval;
 
 	D(bug("[SDL] SDL_SemWaitTimeout()\n"));
@@ -439,113 +256,76 @@ int SDL_SemWaitTimeout(SDL_sem *sem, Uint32 timeout)
 		return SDL_SemWait(sem);
 	}
 
-	#if 1
+	struct waitnode wn;
+	LONG signal;
 
-	if (mywaitinit(&data, timeout) == 0)
+	retval = 0;
+	signal = -1;
+
+	ObtainSemaphore(&sem->sem);
+
+	while (sem->sem_value <= 0)
 	{
-		struct waitnode wn;
-		LONG signal;
-
-		retval = 0;
-		signal = -1;
-
-		ObtainSemaphore(&sem->sem);
-
-		while (sem->sem_value <= 0)
+		if (signal == -1)
 		{
+		wn.task = FindTask(NULL);
+		signal = AllocSignal(-1);
 			if (signal == -1)
 			{
-				wn.task = FindTask(NULL);
-				signal = AllocSignal(-1);
-				if (signal == -1)
-				{
-					signal = FALLBACKSIGNAL;
-					SetSignal(1 << FALLBACKSIGNAL, 0);
-				}
-				wn.sigmask = 1 << signal;
-
-				ADDTAIL(&sem->waitlist, &wn);
+				signal = FALLBACKSIGNAL;
+				SetSignal(1 << FALLBACKSIGNAL, 0);
 			}
+			wn.sigmask = 1 << signal;
 
-			ReleaseSemaphore(&sem->sem);
-
-			data.extramask = wn.sigmask;
-			retval = mywait(&data, timeout);
-
-			ObtainSemaphore(&sem->sem);
-
-			/* CTRL-C? */
-			if (retval < 0)
-			{
-				break;
-			}
-
-			/* Timed out? (== no 'semaphore released'-signal) */
-			if (data.extramask == 0)
-			{
-				retval = SDL_MUTEX_TIMEDOUT;
-
-				break;
-			}
-
-			/*
-			 * Not timed out, someone released the semaphore.
-			 * See if we can get it. If we can't, continue waiting.
-			 */
-		}
-
-		if (signal != -1)
-		{
-			REMOVE(&wn);
-
-			if (signal != FALLBACKSIGNAL)
-			{
-				FreeSignal(signal);
-			}
-		}
-
-		/* If can obtain (no timeout, no break), obtain it */
-		if (retval == 0)
-		{
-			--sem->sem_value;
-
-			D(bug("[SDL] SDL_SemWaitTimeout(): final sem_value: %ld\n", sem->sem_value));
+			ADDTAIL(&sem->waitlist, &wn);
 		}
 
 		ReleaseSemaphore(&sem->sem);
-	}
-	else retval = -1;
 
-	mywaitdone(&data);
+		retval = WaitTime(wn.sigmask || SIGBREAKF_CTRL_C, (timeout*1000));
 
-	#else
+		ObtainSemaphore(&sem->sem);
 
-	/* Ack!  We have to busy wait... */
-	timeout += SDL_GetTicks();
-
-	if (mywaitinit(&data, 1) == 0)
-	{
-		do
+		/* CTRL-C? */
+		if (retval & SIGBREAKF_CTRL_C)
 		{
-			retval = SDL_SemTryWait(sem);
-			if (retval == 0)
-			{
-				break;
-			}
+			break;
+		}
 
-			if (mywait(&data, 1) < 0)
-			{
-				retval = -1;
-				break;
-			}
+		/* Timed out? (== no 'semaphore released'-signal) */
+		if (retval == 0)
+		{
+			retval = SDL_MUTEX_TIMEDOUT;
 
-		} while (SDL_GetTicks() < timeout);
+			break;
+		}
+
+ 		/*
+		 * Not timed out, someone released the semaphore.
+		 * See if we can get it. If we can't, continue waiting.
+		 */
 	}
-	else retval = -1;
 
-	mywaitdone(&data);
+	if (signal != -1)
+	{
+		REMOVE(&wn);
 
-	#endif
+		if (signal != FALLBACKSIGNAL)
+		{
+			FreeSignal(signal);
+		}
+		
+	}
+
+	/* If can obtain (no timeout, no break), obtain it */
+	if (retval == wn.sigmask)
+	{
+		--sem->sem_value;
+
+		D(bug("[SDL] SDL_SemWaitTimeout(): final sem_value: %ld\n", sem->sem_value));
+	}
+
+	ReleaseSemaphore(&sem->sem);
 
 	return retval;
 }
@@ -563,7 +343,7 @@ Uint32 SDL_SemValue(SDL_sem *sem)
 	}
 
 	ObtainSemaphoreShared(&sem->sem);
-
+	
 	retval = sem->sem_value;
 
 	ReleaseSemaphore(&sem->sem);

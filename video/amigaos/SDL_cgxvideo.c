@@ -22,7 +22,7 @@
 
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_cgxvideo.c,v 1.2.3 2008/11/20 08:51:50 bernd roesch Exp $";
+ "@(#) $Id$";
 #endif
 
 /*
@@ -30,21 +30,25 @@ static char rcsid =
  * gabriele.greco@aruba.it
  */
 
-
-#include "SDL_config.h" 
-#include <intuition/intuitionbase.h>
-#include <intuition/screens.h>
-#ifdef MORPHOS
-#include <cybergraphx/cybergraphics.h>
-#else
-#include <cybergraphics/cybergraphics.h>
-#include <proto/dos.h>
-#include <inline/dos.h>
+/*
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#ifdef MTRR_SUPPORT
+#include <asm/mtrr.h>
+#include <sys/fcntl.h>
 #endif
+*/
 
+#include "SDL.h"
+#include "SDL_error.h"
+#include "SDL_timer.h"
+#include "SDL_thread.h"
 #include "SDL_video.h"
 #include "SDL_mouse.h"
-//#include "SDL_endian.h"
+#include "SDL_endian.h"
 #include "../SDL_sysvideo.h"
 #include "../SDL_pixels_c.h"
 #include "../../events/SDL_events_c.h"
@@ -56,21 +60,11 @@ static char rcsid =
 #include "SDL_cgxmodes_c.h"
 #include "SDL_cgximage_c.h"
 #include "SDL_cgxyuv_c.h"
- 
-#ifdef APOLLO_BLIT
-#include "apolloammxenable.h"
-#endif
 
 #ifdef _AROS
 #include <stdlib.h>
 #include <proto/alib.h>
 #endif
-#ifdef __cplusplus
-extern "C" {
-#endif
-//#define Bug kprintf
-
-unsigned long _sdl_windowaddr;
 
 /* Initialization/Query functions */
 static int CGX_VideoInit(_THIS, SDL_PixelFormat *vformat);
@@ -79,27 +73,12 @@ static int CGX_ToggleFullScreen(_THIS, int on);
 static void CGX_UpdateMouse(_THIS);
 static int CGX_SetColors(_THIS, int firstcolor, int ncolors, SDL_Color *colors);
 static void CGX_VideoQuit(_THIS);
-static struct SignalSemaphore sem;
+
 /* CGX driver bootstrap functions */
 
 struct Library *CyberGfxBase=NULL;
 struct IntuitionBase *IntuitionBase=NULL;
 struct GfxBase *GfxBase=NULL;
-
-void SDL_AmigaLockWindow()
-{
-ObtainSemaphore (&sem);
-}
-
-void SDL_AmigaUnlockWindow()
-{
-ReleaseSemaphore (&sem);
-}
-
-struct Window * SDL_AmigaWindowAddr(void)
-{
-  return (struct Window *)_sdl_windowaddr;
-}
 
 int CGX_SetGamma(_THIS, float red, float green, float blue)
 {
@@ -107,7 +86,7 @@ int CGX_SetGamma(_THIS, float red, float green, float blue)
     return -1;
 }
 
-int CGX_GetGamma(_THIS, float red, float green, float blue)
+int CGX_GetGamma(_THIS, float *red, float *green, float *blue)
 {
     SDL_SetError("Gamma correction not supported");
     return -1;
@@ -151,15 +130,7 @@ static void DestroyScreen(_THIS)
 {
   	if(currently_fullscreen)
 	{
-		if(this->hidden->dbuffer == 2)
-		{
-			this->hidden->dbuffer=0;
-
-			if(SDL_RastPort && SDL_RastPort != &SDL_Display->RastPort)
-				free(SDL_RastPort);
-			SDL_RastPort=NULL;
-		}
-		if(this->hidden->dbuffer == 1)
+		if(this->hidden->dbuffer)
 		{
 			extern struct MsgPort *safeport,*dispport;
 
@@ -232,7 +203,7 @@ static void CGX_DeleteDevice(SDL_VideoDevice *device)
 static SDL_VideoDevice *CGX_CreateDevice(int devindex)
 {
 	SDL_VideoDevice *device;
-    InitSemaphore(&sem);
+
 	/* Initialize all variables that we clean on shutdown */
 	device = (SDL_VideoDevice *)malloc(sizeof(SDL_VideoDevice));
 	if ( device ) {
@@ -270,7 +241,7 @@ static SDL_VideoDevice *CGX_CreateDevice(int devindex)
 	device->AllocHWSurface = CGX_AllocHWSurface;
 	device->CheckHWBlit = CGX_CheckHWBlit;
 	device->FillHWRect = CGX_FillHWRect;
-	device->SetHWColorKey = NULL;//CGX_SetHWColorKey;
+	device->SetHWColorKey = CGX_SetHWColorKey;
 	device->SetHWAlpha = NULL;
 	device->LockHWSurface = CGX_LockHWSurface;
 	device->UnlockHWSurface = CGX_UnlockHWSurface;
@@ -280,7 +251,7 @@ static SDL_VideoDevice *CGX_CreateDevice(int devindex)
 	device->GetGamma = CGX_GetGamma;
 	device->SetGammaRamp = CGX_SetGammaRamp;
 	device->GetGammaRamp = NULL;
-#ifdef SDL_VIDEO_OPENGL
+#ifdef HAVE_OPENGL
 	device->GL_LoadLibrary = CGX_GL_LoadLibrary;
 	device->GL_GetProcAddress = CGX_GL_GetProcAddress;
 	device->GL_GetAttribute = CGX_GL_GetAttribute;
@@ -309,13 +280,13 @@ VideoBootStrap CGX_bootstrap = {
 	"CGX", "AmigaOS CyberGraphics", CGX_Available, CGX_CreateDevice
 };
 
-Uint32 MakeBitMask(_THIS,int type,int format,int *bpp, struct SDL_Surface *screen)
+Uint32 MakeBitMask(_THIS,int type,int format,int *bpp)
 {
 	D(if(type==0)bug("REAL pixel format: "));
-   
+
 	if(this->hidden->depth==*bpp)
 	{
-    	 D(bug("Pixel Format %ld\n",format));
+
 	switch(format)
     	{
 		case PIXFMT_LUT8:
@@ -324,14 +295,14 @@ Uint32 MakeBitMask(_THIS,int type,int format,int *bpp, struct SDL_Surface *scree
 		case PIXFMT_BGR15:
 		case PIXFMT_RGB15PC:
 			switch(type)
-			{
+			{			
 				case 0:
 					D(bug("RGB15PC/BGR15\n"));
-					return 31;
+					return 0x1f;
 				case 1:
-					return 992;
+					return 0x3e0;
 				case 2:
-					return 31744;
+					return 0x7c00;
 			}
 		case PIXFMT_RGB15:
 		case PIXFMT_BGR15PC:
@@ -339,50 +310,35 @@ Uint32 MakeBitMask(_THIS,int type,int format,int *bpp, struct SDL_Surface *scree
 			{
 				case 0:
 					D(bug("RGB15/BGR15PC\n"));
-					return 31744;
+					return 0x7c00;
 				case 1:
-					return 992;
+					return 0x3e0;
 				case 2:
-					return 31;
+					return 0x1f;
 			}
 		case PIXFMT_BGR16PC:
-			return 0;
-			break;
 		case PIXFMT_RGB16:
-
 			switch(type)
 			{
 				case 0:
-					
-					return 63488;
+					D(bug("RGB16PC\n"));
+					return 0xf8;
 				case 1:
-					return 2016;
+					return 0xe007;
 				case 2:
-					return 31;
+					return 0x1f00;
 			}
 		case PIXFMT_BGR16:
 		case PIXFMT_RGB16PC:
 			switch(type)
 			{
-				case 0:  
-					//kprintf("RGB16PC/BGR16\n");
-					return 0;
-					//return 0b11111000; //248
-					return 248; // old
-				
-					//return 0x7C00;
+				case 0:
+					D(bug("RGB16PC/BGR16\n"));
+					return 0xf800;
 				case 1:
-					return 0;
-					//return 0b110000000000111;
-					//return 24583;
-					return 57351;  // old
-				
-					   
+					return 0x7e0;
 				case 2:
-					return 0;
-					//return 0b1111100000000; //7936
-					return 7936; // old
-				
+					return 0x1f;
 			}
 
 		case PIXFMT_RGB24:
@@ -408,7 +364,6 @@ Uint32 MakeBitMask(_THIS,int type,int format,int *bpp, struct SDL_Surface *scree
 					return 0xff0000;
 			}
 		case PIXFMT_ARGB32:
-		
 			switch(type)
 			{
 				case 0:
@@ -420,23 +375,28 @@ Uint32 MakeBitMask(_THIS,int type,int format,int *bpp, struct SDL_Surface *scree
 					return 0xff;
 			}
 		case PIXFMT_BGRA32:
-		   
 			switch(type)
 			{
+#if SDL_BYTEORDER == SDL_LIL_ENDIAN
                 case 0:
 					D(bug("BGRA32\n"));
-					if (screen && (screen->flags & SDL_HWSURFACE)){return 0x00ff00;}	
-                    return 0xff000000;						
+					return 0xff;
 				case 1:
-					if (screen && (screen->flags & SDL_HWSURFACE)){return 0xff0000;} //green
-					return 0x00ff0000; 
+					return 0xff00;
 				case 2:
-					if (screen && (screen->flags & SDL_HWSURFACE))return 0xff000000;	//blue
-					return 0x0000ff00;
-					
+					return 0xff0000;
+#else
+                case 0:
+					D(bug("BGRA32\n"));
+					return 0xff00;
+				case 1:
+					return 0xff0000;
+				case 2:
+					return 0xff000000;
+
+#endif
             }
 		case PIXFMT_RGBA32:
-			
 			switch(type)
 			{
 				case 0:
@@ -486,7 +446,6 @@ use_truecolor:
 			case 15:
 				D(if(type==0) bug("Not supported, switching to 24bit!\n"));
 				*bpp=24;
-			
 				goto use_truecolor;
 				break;
 			default:
@@ -503,10 +462,6 @@ static int CGX_VideoInit(_THIS, SDL_PixelFormat *vformat)
 	int i;
     char *test;
     struct Library *RTGBase;
-    int bpp;
-    
-    bpp=vformat->BitsPerPixel;
-
 
 	D(bug("VideoInit... Opening libraries\n"));
 
@@ -531,31 +486,10 @@ static int CGX_VideoInit(_THIS, SDL_PixelFormat *vformat)
 		}
 	}
 
-// enable AMMX for Apollo Core
-#ifdef APOLLO_BLIT
-	if( !Apollo_EnableAMMX() )
-	{
-		/* abort for Apollo builds -> disabled for now, current code is m68k clean */
-#if 0
-		struct EasyStruct myES =
-		{
-		        sizeof(struct EasyStruct),
-			0,
-	 		"Amiga SDL Error",
-		        "Cannot initialize SDL CGXVideo on this computer\nThis is an AMMX SDL build for Apollo Core\nand AMMX could not be detected.",
-		        "Abort",
-	        };
-		EasyRequest(NULL, &myES, NULL );
-
-		SDL_SetError("Couldn't find active Apollo Core AMMX.");
-		return(-1);
-#endif
-	}
-#endif
-
 // check if P96 is present and if we don't need the fix
 #ifndef AROS
     test = getenv("USE_P96_FIX");
+       
     if(test && *test != '0') {
         if(RTGBase=OpenLibrary("libs:picasso96/rtg.library",0L)) {
             extern int use_picasso96;
@@ -577,64 +511,30 @@ static int CGX_VideoInit(_THIS, SDL_PixelFormat *vformat)
 	}
 
 	D(bug("Checking if we are using a CGX native display...\n"));
-   
+
 	if(!IsCyberModeID(GetVPModeID(&SDL_Display->ViewPort)))
-	{  //selden reach
-		
-		Uint32 okid = INVALID_ID;
-		if (bpp == 32)
-		{
-			UWORD pixfmt[] ={PIXFMT_BGRA32,-1};
-		  unsigned long *ret;
-          struct CyberModeNode * cnode;
-		  ret = AllocCModeListTags(CYBRMREQ_MinWidth,SDL_Display->Width,CYBRMREQ_MinHeight,SDL_Display->Height,
-			  CYBRMREQ_MaxWidth,SDL_Display->Width+1000,CYBRMREQ_MaxHeight,SDL_Display->Height+1000,
-			  CYBRMREQ_MaxDepth,bpp,CYBRMREQ_MinDepth,bpp,CYBRMREQ_CModelArray,&pixfmt);
-			  if (ret)
-			  {cnode = *ret;
-               if(cnode)okid = cnode->DisplayID;
-			  }
-		}
-		if (bpp == 16)
-		{
-			UWORD pixfmt[] ={PIXFMT_RGB16,-1};
-		  unsigned long *ret;
-          struct CyberModeNode * cnode;
-		  ret = AllocCModeListTags(CYBRMREQ_MinWidth,SDL_Display->Width,CYBRMREQ_MinHeight,SDL_Display->Height,
-			  CYBRMREQ_MaxWidth,SDL_Display->Width+1000,CYBRMREQ_MaxHeight,SDL_Display->Height+1000,
-			  CYBRMREQ_MaxDepth,bpp,CYBRMREQ_MinDepth,16,CYBRMREQ_CModelArray,&pixfmt);
-			  if (ret)
-					{cnode = *ret;
-					if (cnode)okid = cnode->DisplayID;
-					}
-		}
-		D(bug("%screenmode ID%ld\n",okid));
-		if (okid == INVALID_ID)
-		{
-		okid=BestCModeIDTags(CYBRBIDTG_NominalWidth,SDL_Display->Width,
+	{
+		Uint32 okid=BestCModeIDTags(CYBRBIDTG_NominalWidth,SDL_Display->Width,
 				CYBRBIDTG_NominalHeight,SDL_Display->Height,
-				CYBRBIDTG_Depth,bpp,
+				CYBRBIDTG_Depth,8,
 				TAG_DONE);
-		}
-        
+		
+        D(bug("Default visual is not CGX native!\n"));
 
 		UnlockPubScreen(NULL,SDL_Display);
 
 		GFX_Display=NULL;
-        
+
 		if(okid!=INVALID_ID)
-		{  //selden reach
-			
+		{
 			GFX_Display=OpenScreenTags(NULL,
-									//SA_Width,SDL_Display->Width,
-									//SA_Height,SDL_Display->Height,
-									SA_Title,"SDL Screen",
-									SA_Depth,bpp,SA_Quiet,TRUE,
+									SA_Width,SDL_Display->Width,
+									SA_Height,SDL_Display->Height,
+									SA_Depth,8,SA_Quiet,TRUE,
 									SA_ShowTitle,FALSE,
 									SA_DisplayID,okid,
 									TAG_DONE);
 		}
-		else kprintf("Cant get a valid screenmode ID with BestCModeIDTags\n");
 
 		if(!GFX_Display)
 		{
@@ -652,6 +552,11 @@ static int CGX_VideoInit(_THIS, SDL_PixelFormat *vformat)
 	swap_pixels = 0;
 
 // Non e' detto che sia cosi' pero', alcune schede potrebbero gestire i modi in modo differente
+#if 0
+	if ( SDL_BYTEORDER == SDL_LIL_ENDIAN ) {
+		swap_pixels = 1;
+	}
+#endif
 	D(bug("Before GetVideoModes....\n"));
 
 	/* Get the available video modes */
@@ -662,10 +567,8 @@ static int CGX_VideoInit(_THIS, SDL_PixelFormat *vformat)
 	   Use the default visual (or at least one with the same depth) */
 
 	for(i = 0; i < this->hidden->nvisuals; i++)
-	{
-		//kprintf(" num %ld depths here %ld \n",this->hidden->nvisuals,this->hidden->visuals[i].depth);
-	    if(this->hidden->visuals[i].depth == GetCyberMapAttr(SDL_Display->RastPort.BitMap,CYBRMATTR_DEPTH))	break;
-	}
+	    if(this->hidden->visuals[i].depth == GetCyberMapAttr(SDL_Display->RastPort.BitMap,CYBRMATTR_DEPTH))
+					break;
 	if(i == this->hidden->nvisuals) {
 	    /* default visual was useless, take the deepest one instead */
 	    i = 0;
@@ -675,10 +578,9 @@ static int CGX_VideoInit(_THIS, SDL_PixelFormat *vformat)
 //	SDL_XColorMap = SDL_DisplayColormap;
 
 	this->hidden->depth = this->hidden->visuals[i].depth;
-	//kprintf("Init: Setting screen depth to: %ld\n",this->hidden->depth));
+	D(bug("Init: Setting screen depth to: %ld\n",this->hidden->depth));
 	vformat->BitsPerPixel = this->hidden->visuals[i].depth; /* this->hidden->visuals[i].bpp; */
-	D(bug("depth %ld hidden depth %ld\n",vformat->BitsPerPixel, this->hidden->depth));
-	
+
 	{
 		int form;
 		APTR handle;
@@ -697,14 +599,13 @@ static int CGX_VideoInit(_THIS, SDL_PixelFormat *vformat)
 
 		form=GetCyberIDAttr(CYBRIDATTR_PIXFMT,SDL_Visual);
 
-		// In this case I use makebitmask in a way that I'm sure I'll get PIXFMT pixel mask
+// In this case I use makebitmask in a way that I'm sure I'll get PIXFMT pixel mask
 
 		if ( vformat->BitsPerPixel > 8 )
 		{
-			vformat->Rmask = MakeBitMask(this,0,form,&this->hidden->depth,0);
-	  		vformat->Gmask = MakeBitMask(this,1,form,&this->hidden->depth,0);
-		  	vformat->Bmask = MakeBitMask(this,2,form,&this->hidden->depth,0);
-		  
+			vformat->Rmask = MakeBitMask(this,0,form,&this->hidden->depth);
+	  		vformat->Gmask = MakeBitMask(this,1,form,&this->hidden->depth);
+		  	vformat->Bmask = MakeBitMask(this,2,form,&this->hidden->depth);
 		}
 	}
 
@@ -717,12 +618,11 @@ static int CGX_VideoInit(_THIS, SDL_PixelFormat *vformat)
 
 	/* Fill in some window manager capabilities */
 	this->info.wm_available = 1;
-	this->info.hw_available = 1;
 	this->info.blit_hw = 1;
-	this->info.blit_hw_CC = 0;
+	this->info.blit_hw_CC = 1;
 	this->info.blit_sw = 1;
 	this->info.blit_fill = 1;
-	this->info.video_mem=8000; // Not always true but almost any Amiga card has this memory!
+	this->info.video_mem=2000; // Not always true but almost any Amiga card has this memory!
 
 	this->hidden->same_format=0;
 	SDL_RastPort=&SDL_Display->RastPort;
@@ -735,7 +635,7 @@ static int CGX_VideoInit(_THIS, SDL_PixelFormat *vformat)
 void CGX_DestroyWindow(_THIS, SDL_Surface *screen)
 {
 	D(bug("Destroy Window...\n"));
-   
+
 	if ( ! SDL_windowid ) {
 		/* Hide the managed window */
 		int was_fullscreen=0;
@@ -752,16 +652,10 @@ void CGX_DestroyWindow(_THIS, SDL_Surface *screen)
 		}
 
 		/* Destroy the output window */
-		SDL_AmigaLockWindow();
 		if ( SDL_Window ) {
 			CloseWindow(SDL_Window);
-			if (SDL_Window_Background)CloseWindow(SDL_Window_Background);
 			SDL_Window=NULL;
-			_sdl_windowaddr = 0;
-            SDL_Window_Background=NULL;
-			
 		}
-		SDL_AmigaUnlockWindow();
 
 		/* Free the colormap entries */
 		if ( SDL_XPixels ) {
@@ -799,39 +693,33 @@ static void CGX_SetSizeHints(_THIS, int w, int h, Uint32 flags)
 	}
 	if ( flags & SDL_FULLSCREEN ) {
 		flags&=~SDL_RESIZABLE;
-	}
-	//else
-    
-	//if ( getenv("SDL_VIDEO_CENTERED") ) {
-	//	int display_w, display_h;
+	} else if ( getenv("SDL_VIDEO_CENTERED") ) {
+		int display_w, display_h;
 
-	//	display_w = SDL_Display->Width;
-	//	display_h = SDL_Display->Height;
-	//	ChangeWindowBox(SDL_Window,(display_w - w /* -SDL_Window->BorderLeft-SDL_Window->BorderRight */)/2,
-	//				(display_h - h /* -SDL_Window->BorderTop-SDL_Window->BorderBottom*/)/2,
-	//				w/*+SDL_Window->BorderLeft+SDL_Window->BorderRight */,
-	//				h/*+SDL_Window->BorderTop+SDL_Window->BorderBottom */);
-	//}
+		display_w = SDL_Display->Width;
+		display_h = SDL_Display->Height;
+		ChangeWindowBox(SDL_Window,(display_w - w - SDL_Window->BorderLeft-SDL_Window->BorderRight)/2,
+					(display_h - h - SDL_Window->BorderTop-SDL_Window->BorderBottom)/2,
+					w+SDL_Window->BorderLeft+SDL_Window->BorderRight,
+					h+SDL_Window->BorderTop+SDL_Window->BorderBottom);
+	}
 }
 
 int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 			    int w, int h, int bpp, Uint32 flags)
 {
+	int retval;
 #if 0
 	int i, depth;
 	Uint32 vis;
 #endif
-	D(bug("CGX_CreateWindow %d\n",bpp));
-    //kprintf("%ld %ld\n",screen->flags,flags);
-	//kprintf("window depth %ld\n",bpp);
+	D(bug("CGX_CreateWindow\n"));
+
 	/* If a window is already present, destroy it and start fresh */
 	if ( SDL_Window ) {
 		CGX_DestroyWindow(this, screen);
 	}
- //   if ( (screen->flags&SDL_FULLSCREEN) != SDL_FULLSCREEN ) {
-	//	/* There's no windowed double-buffering */
-	//	screen->flags &= ~SDL_DOUBLEBUF;
-	//} 
+
 	/* See if we have been given a window id */
 	if ( SDL_windowid ) {
 		SDL_Window = (struct Window *)atol(SDL_windowid);
@@ -843,6 +731,7 @@ int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 	{
 		Uint32 form;
 		APTR handle;
+
 		struct DisplayInfo info;
 
 		if(!(handle=FindDisplayInfo(SDL_Visual)))
@@ -855,28 +744,23 @@ int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 
 		if(flags&SDL_HWSURFACE)
 		{
-			
 			if(bpp!=this->hidden->depth)
 			{
 				bpp=this->hidden->depth;
 				D(bug("Accel forces bpp to be equal (%ld)\n",bpp));
-				
 			}
 		}
-		if(flags&SDL_HWSURFACE)screen->flags|=SDL_HWSURFACE;
-		  
- 
+
 		D(bug("BEFORE screen allocation: bpp:%ld (real:%ld)\n",bpp,this->hidden->depth));
 
 /* With this call if needed I'll revert the wanted bpp to a bpp best suited for the display, actually occurs
    only with requested format 15/16bit and display format != 15/16bit
  */
-		
-        
+
 		if ( ! SDL_ReallocFormat(screen, bpp,
-				MakeBitMask(this,0,form,&bpp,screen), MakeBitMask(this,1,form,&bpp,screen), MakeBitMask(this,2,form,&bpp,screen), 0) )
+				MakeBitMask(this,0,form,&bpp), MakeBitMask(this,1,form,&bpp), MakeBitMask(this,2,form,&bpp), 0) )
 			return -1;
-        
+
 		D(bug("AFTER screen allocation: bpp:%ld (real:%ld)\n",bpp,this->hidden->depth));
 
 	}
@@ -922,108 +806,70 @@ int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 	/* Create (or use) the X11 display window */
 
 	if ( !SDL_windowid ) {
-		int left = (SDL_Display->Width - w) / 2;
-		int top = (SDL_Display->Height - h) / 2;
-		if (left < 0 )left = 0;
-		if (top  < 0 )top =0;
-				
 			if( flags & SDL_FULLSCREEN )
-			{ 
-				
-				//SetAPen(&sc->RastPort,1); // rest of display should be black
-				//RectFill(&sc->RastPort,0,0,w-1,h-1); 
-				if (left !=0 || top != 0)
-				{
-				SDL_Window_Background = OpenWindowTags(NULL,WA_Left,0,WA_Top,0, 
-											WA_Flags,WFLG_SIMPLE_REFRESH | WFLG_ACTIVATE|WFLG_RMBTRAP|WFLG_BORDERLESS|WFLG_BACKDROP
-											/*|WFLG_REPORTMOUSE */,
-											WA_IDCMP,0,
-											//WA_Title,"SDL Backgroundwindow",
+			{
+				SDL_Window = OpenWindowTags(NULL,WA_Width,w,WA_Height,h,
+											WA_Flags,WFLG_ACTIVATE|WFLG_RMBTRAP|WFLG_BORDERLESS|WFLG_BACKDROP|WFLG_REPORTMOUSE,
+											WA_IDCMP,IDCMP_RAWKEY|IDCMP_MOUSEBUTTONS|IDCMP_MOUSEMOVE,
 											WA_CustomScreen,(ULONG)SDL_Display,
 											TAG_DONE);
-				}
-				if (SDL_Window_Background)
-				{
-				SetAPen(SDL_Window_Background->RPort,1); // rest of display should be black
-				RectFill(SDL_Window_Background->RPort,0,0,SDL_Window_Background->Width-1,SDL_Window_Background->Height); 
-				}
-				SDL_Window = OpenWindowTags(NULL,WA_Left,left,WA_Top,top,WA_Width,w,WA_Height,h, 
-											WA_Flags,WFLG_ACTIVATE|WFLG_RMBTRAP|WFLG_BORDERLESS | WFLG_REPORTMOUSE ,
-											WA_IDCMP,IDCMP_RAWKEY|IDCMP_MOUSEBUTTONS|IDCMP_MOUSEMOVE |IDCMP_ACTIVEWINDOW|IDCMP_INACTIVEWINDOW,
-											WA_CustomScreen,(ULONG)SDL_Display,
-											TAG_DONE);
-                if (SDL_Window)
-				{
-				 
-                 
-				  //ChangeWindowBox(SDL_Window,left,top,w,h);
-				}
+
 				D(bug("Opening backdrop window %ldx%ld on display %lx!\n",w,h,SDL_Display));
 			}
 			else
 			{
 				/* Create GimmeZeroZero window when OpenGL is used */
-				unsigned long gzz = TRUE;
-				/*if( flags & SDL_OPENGL ) {
-					gzz = TRUE;
-				}*/
-               
-				SDL_Window = OpenWindowTags(NULL,WA_Left,left,WA_Top,top,WA_InnerWidth,w,WA_InnerHeight,h,
+				unsigned long gzz = FALSE;
+//				if( flags & SDL_OPENGL ) {
+//					gzz = TRUE;
+//				}
+
+				SDL_Window = OpenWindowTags(NULL,WA_InnerWidth,w,WA_InnerHeight,h,
 											WA_Flags,WFLG_REPORTMOUSE|WFLG_ACTIVATE|WFLG_RMBTRAP | ((flags&SDL_NOFRAME) ? 0 : (WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_DRAGBAR | ((flags&SDL_RESIZABLE) ? WFLG_SIZEGADGET|WFLG_SIZEBBOTTOM : 0))),
-											WA_IDCMP,IDCMP_RAWKEY|IDCMP_CLOSEWINDOW|IDCMP_MOUSEBUTTONS|IDCMP_NEWSIZE|IDCMP_MOUSEMOVE |IDCMP_ACTIVEWINDOW |IDCMP_INACTIVEWINDOW,
+											WA_IDCMP,IDCMP_RAWKEY|IDCMP_CLOSEWINDOW|IDCMP_MOUSEBUTTONS|IDCMP_NEWSIZE|IDCMP_MOUSEMOVE,
 											WA_PubScreen,(ULONG)SDL_Display,
 											WA_GimmeZeroZero, gzz,
 														TAG_DONE);
-				
 				D(bug("Opening WB window of size: %ldx%ld!\n",w,h));
 			}
-			
-        //kprintf("%lx\n",SDL_Window);
+
 		if(!SDL_Window)
 			return -1;
 	}
 	this->hidden->swap_bytes = 0; 
-    if ((flags & SDL_OPENGL) == 0)
-			{ 
-				switch(GetCyberMapAttr(SDL_Window->RPort->BitMap, CYBRMATTR_PIXFMT))
-				{
-					//case PIXFMT_RGB15PC:
-					case PIXFMT_RGB16PC:
-					case PIXFMT_BGR16PC:
-						this->hidden->swap_bytes = 1; 
-						break;
-                    case PIXFMT_BGRA32:
-                        
-						//this->hidden->swap_bytes = 1; 
-						break;
-				}
-			} 
+	if ((flags & SDL_OPENGL) == 0)
+	{ 
+		switch(GetCyberMapAttr(SDL_Window->RPort->BitMap, CYBRMATTR_PIXFMT))
+		{
+			case PIXFMT_RGB15PC:
+			case PIXFMT_BGR15:
+			case PIXFMT_RGB16PC:
+			case PIXFMT_BGR16:
+			this->hidden->swap_bytes = 1; 
+			break;
+                    
+			case PIXFMT_BGRA32:
+			//this->hidden->swap_bytes = 1; 
+			break;
+		}
+	} 
 	this->hidden->BytesPerPixel=GetCyberMapAttr(SDL_Window->RPort->BitMap,CYBRMATTR_BPPIX);
-	{
-	    long val= this->hidden->BytesPerPixel;
-	    //kprintf("bytes per pix %ld\n",val);
-	}
+
 	if(screen->flags & SDL_DOUBLEBUF)
 	{
 		if(SDL_RastPort=malloc(sizeof(struct RastPort)))
 		{
 			InitRastPort(SDL_RastPort);
-			if( this->hidden->dbscrollscreen == 1 ) /* use scrolling screen for double buffer */
-			{
-//				SDL_RastPort->BitMap=SDL_Display->RastPort.BitMap;
-				SDL_RastPort->BitMap=&this->hidden->dbitmap;
-			}
-			else
-				SDL_RastPort->BitMap=this->hidden->SB[1]->sb_BitMap;
-			
+			SDL_RastPort->BitMap=this->hidden->SB[1]->sb_BitMap;
 		}
 		else
 			return -1;
 	}
-	else 
-		SDL_RastPort=SDL_Window->RPort;
-	
-    
+	else SDL_RastPort=SDL_Window->RPort;
+
+	if(flags&SDL_HWSURFACE)
+		screen->flags|=SDL_HWSURFACE;
+
 	if( !SDL_windowid ) {
 	    CGX_SetSizeHints(this, w, h, flags);
 		current_w = w;
@@ -1035,8 +881,7 @@ int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 		if ( flags & SDL_FULLSCREEN ) {
 			screen->flags |= SDL_FULLSCREEN;
 			currently_fullscreen=1;
-			
-			//CGX_EnterFullScreen(this); //Ci siamo gia'!
+//			CGX_EnterFullScreen(this); Ci siamo gia'!
 		} else {
 			screen->flags &= ~SDL_FULLSCREEN;
 		}
@@ -1044,11 +889,10 @@ int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 	screen->w = w;
 	screen->h = h;
 	screen->pitch = SDL_CalculatePitch(screen);
-	if (CGX_ResizeImage(this, screen, flags) <0 )return -1;
+        retval = CGX_ResizeImage(this, screen, flags);
 
 	/* Make OpenGL Context if needed*/
 	if(flags & SDL_OPENGL) {
-		
 		if(this->gl_data->gl_active == 0) {
 			if(CGX_GL_Init(this) < 0)
 				return -1;
@@ -1062,31 +906,29 @@ int CGX_CreateWindow(_THIS, SDL_Surface *screen,
 				screen->flags |= SDL_OPENGL;
 		}
 	}
-	_sdl_windowaddr = SDL_Window;
-	//kprintf("bit %ld byte / Pixel %ld render buffer addr %lx \n",screen->format->BitsPerPixel,this->hidden->BytesPerPixel,screen->pixels);
-	return 0;
+	return (retval);
 }
 
 int CGX_ResizeWindow(_THIS,
 			SDL_Surface *screen, int w, int h, Uint32 flags)
 {
-	int retval = -1;
 	D(bug("CGX_ResizeWindow\n"));
+
 	if ( ! SDL_windowid ) {
 		/* Resize the window manager window */
 		CGX_SetSizeHints(this, w, h, flags);
 		current_w = w;
 		current_h = h;
 
-		ChangeWindowBox(SDL_Window,SDL_Window->LeftEdge ,SDL_Window->TopEdge, w+SDL_Window->BorderLeft+SDL_Window->BorderRight,
+		ChangeWindowBox(SDL_Window,SDL_Window->LeftEdge,SDL_Window->TopEdge, w+SDL_Window->BorderLeft+SDL_Window->BorderRight,
 					h+SDL_Window->BorderTop+SDL_Window->BorderBottom);
 
 		screen->w = w;
 		screen->h = h;
 		screen->pitch = SDL_CalculatePitch(screen);
-		 retval = CGX_ResizeImage(this, screen, flags);
+		CGX_ResizeImage(this, screen, flags);
 	}
-	return(retval);
+	return(0);
 }
 
 static SDL_Surface *CGX_SetVideoMode(_THIS, SDL_Surface *current,
@@ -1094,16 +936,11 @@ static SDL_Surface *CGX_SetVideoMode(_THIS, SDL_Surface *current,
 {
 	Uint32 saved_flags;
 	int needcreate=0;
+
 	D(bug("CGX_SetVideoMode current:%lx\n",current));
-#ifdef APOLLO_BLIT
-	if( !Apollo_AMMXon )
-		flags &= ~SDL_DOUBLEBUF;
-#endif
-	//printf("flags %x dbfl %x\n",flags,SDL_DOUBLEBUF);
 
 	/* Lock the event thread, in multi-threading environments */
 	SDL_Lock_EventThread();
-	SDL_AmigaLockWindow();
 
 // Check if the window needs to be closed or can be resized
 
@@ -1111,6 +948,7 @@ static SDL_Surface *CGX_SetVideoMode(_THIS, SDL_Surface *current,
 		needcreate=1;
 
 // Check if we need to close an already existing videomode...
+
 	if(current && current->flags&SDL_FULLSCREEN && !(flags&SDL_FULLSCREEN)) {
 		unsigned long i;
 		D(bug("Destroying image, window & screen!\n"));
@@ -1121,7 +959,7 @@ static SDL_Surface *CGX_SetVideoMode(_THIS, SDL_Surface *current,
 		GFX_Display=SDL_Display=LockPubScreen(NULL);
 
 		bpp=this->hidden->depth=GetCyberMapAttr(SDL_Display->RastPort.BitMap,CYBRMATTR_DEPTH);
-        //kprintf("Set Video mode depth %ld\n",bpp);
+
 		for ( i = 0; i < this->hidden->nvisuals; i++ ) {
 			if ( this->hidden->visuals[i].depth == bpp ) /* era .depth */
 				break;
@@ -1138,21 +976,7 @@ static SDL_Surface *CGX_SetVideoMode(_THIS, SDL_Surface *current,
 	/* Check the combination of flags we were passed */
 	if ( flags & SDL_FULLSCREEN ) {
 		int i;
-            int swidth,sheight;
-	    int dbscroll = 1; /* def: we can use a scrolling screen for doublebuffer */
 
-#ifndef APOLLO_BLIT
-		dbscroll = 0; /* disable except from Apollo SAGA driver (for now, needs testing on other HW) */
-#endif
-		if( flags&SDL_DOUBLEBUF)
-		{
-			//printf("doublebuf requested\n");
-		}
-		else
-		{
-			dbscroll = 0;
-			//printf("doublebuf not set\n");
-		}
 		/* Clear fullscreen flag if not supported */
 		if ( SDL_windowid ) {
 			flags &= ~SDL_FULLSCREEN;
@@ -1172,133 +996,36 @@ static SDL_Surface *CGX_SetVideoMode(_THIS, SDL_Surface *current,
 		else
 buildnewscreen:
 		{
-			Uint32 okid=INVALID_ID;
-		/*if ((flags & SDL_OPENGL) && (bpp == 24))
-		{
-			bpp = 32;
-		}*/
-			if (bpp == 32)
-		{
-			UWORD pixfmt[] ={PIXFMT_BGRA32,-1};
-		  unsigned long *ret;
-          struct CyberModeNode * cnode;
-		  ret = AllocCModeListTags(CYBRMREQ_MinWidth,width,CYBRMREQ_MinHeight,height,
-			  CYBRMREQ_MaxWidth,width+1000,CYBRMREQ_MaxHeight,height+1000,
-			  CYBRMREQ_MaxDepth,bpp,CYBRMREQ_MinDepth,32,CYBRMREQ_CModelArray,(&pixfmt),TAG_END);
-			  if (ret)
-					{cnode = *ret;
-					if (cnode)okid = cnode->DisplayID;
-					}
-		}
-		//if (bpp == 16)
-//		{
-//			UWORD pixfmt[] ={PIXFMT_RGB16,-1};
-//		  unsigned long *ret;
-//          struct CyberModeNode * cnode;
-//		  ret = AllocCModeListTags(CYBRMREQ_MinWidth,width,CYBRMREQ_MinHeight,height,
-//			  CYBRMREQ_MaxWidth,width+1000,CYBRMREQ_MaxHeight,height+1000,
-//			  CYBRMREQ_MaxDepth,bpp,CYBRMREQ_MinDepth,16,CYBRMREQ_CModelArray,&pixfmt,TAG_END);
-//			  if (ret)
-//					{cnode = *ret;
-//					if (cnode)okid = cnode->DisplayID;
-//					}
-//		if (!IsCyberModeID(okid))okid = INVALID_ID;
-//		kprintf(" RGB16  Mode ID %lx\n",okid);
-//		}
-		
-		
-		if (okid == INVALID_ID)
-		{
-				okid=BestCModeIDTags(CYBRBIDTG_NominalWidth,width,
+            Uint32 okid=BestCModeIDTags(CYBRBIDTG_NominalWidth,width,
 				CYBRBIDTG_NominalHeight,height,
 				CYBRBIDTG_Depth,bpp,
 				TAG_DONE);
-			D(bug("Mode ID %lx\n",okid));		
-		}  
 
+            GFX_Display=NULL;
 
-		GFX_Display=NULL;
-		this->hidden->dbscrollscreen = 0; /* no doublebuffer scroll screen */
 			D(bug("Opening screen...\n"));
-			if(okid!=INVALID_ID)
-			{
-				struct DimensionInfo dinfo;
-               
-                  int  result = GetDisplayInfoData(0,&dinfo,sizeof (struct DimensionInfo),DTAG_DIMS,okid);
-						if (result)
-						{
-					          swidth=dinfo.Nominal.MaxX;
-						  sheight=dinfo.Nominal.MaxY;
 
-						  if( dinfo.MaxRasterHeight < 2*height )
-						  {
-							dbscroll = 0; /* we can't scroll for double buffer */
-						  }
-						}
-				//printf("DBScroll %d\n",dbscroll);
-				if( dbscroll )
-				{
-				 /* open at native resolution, 2 times the native height */
-				 GFX_Display=OpenScreenTags(NULL,
-				 				SA_Top,0,
-								SA_Left,0,
-								SA_Width,swidth+1,
-								SA_Height,sheight*2+2,
-								SA_Title,"AMMX SDL Screen",
-//								SA_Quiet,TRUE,SA_ShowTitle,FALSE,
-								SA_AutoScroll,FALSE,
-								SA_Draggable,FALSE,
-								SA_Depth,bpp,
-								SA_Type,CUSTOMSCREEN,
-								SA_Exclusive,TRUE,
-								SA_DisplayID,okid,
-								TAG_DONE);
-				 this->hidden->dbpos = 0;
-				 this->hidden->dbheight = sheight;
-				 //printf("open double buffered screen %x\n",(int)GFX_Display);
-				}
-				if( !GFX_Display )
-				{
-				 dbscroll = 0;
-				 GFX_Display=OpenScreenTags(NULL,
-								//SA_Width,width,
-								//SA_Height,height,
-								SA_Title,"SDL Screen",
+			if(okid!=INVALID_ID)
+				GFX_Display=OpenScreenTags(NULL,
+								SA_Width,width,
+								SA_Height,height,
 								SA_Quiet,TRUE,SA_ShowTitle,FALSE,
 								SA_Depth,bpp,
 								SA_DisplayID,okid,
 								TAG_DONE);
-				}
-				if( dbscroll )
-				 this->hidden->dbscrollscreen = 1; /* use scrolling screen for double buffer */
-			}
-			else kprintf("2: Cant get a valid screenmode ID with BestCModeIDTags\n");
+
 			if(!GFX_Display) {
 				GFX_Display=SDL_Display;
 				flags &= ~SDL_FULLSCREEN;
 				flags &= ~SDL_DOUBLEBUF;
-				kprintf("Screen cant open \n");
 			}
 			else {
 				UnlockPubScreen(NULL,SDL_Display);
 				SDL_Display=GFX_Display;
 	
 				D(bug("Screen opened.\n"));
-                
-				if(flags&SDL_DOUBLEBUF) 
-				{
-				 if( this->hidden->dbscrollscreen )
-				 {
-					D(bug("Initialize double buffered scrolling screen\n"));
-					/* copy bitmap */
-					memcpy( &this->hidden->dbitmap,GFX_Display->RastPort.BitMap, sizeof( struct BitMap ));
-					/* move secondary bitmap further down */
-					this->hidden->dbitmap.Planes[0] += this->hidden->dbitmap.BytesPerRow * this->hidden->dbheight;
-					this->hidden->dbuffer=2;
-					current->flags|=SDL_DOUBLEBUF;
-				 }
-				 else /* if( this->hidden->dbscrollscreen ) */
-				 {
+
+				if(flags&SDL_DOUBLEBUF) {
 					int ok=0;
 					D(bug("Start of DBuffering allocations...\n"));
 
@@ -1335,7 +1062,7 @@ buildnewscreen:
 								}
 
 								ok=1;
-								kprintf("Dbuffering enabled!\n");
+								D(bug("Dbuffering enabled!\n"));
 								this->hidden->dbuffer=1;
 								current->flags|=SDL_DOUBLEBUF;
 							}
@@ -1348,16 +1075,14 @@ buildnewscreen:
 
 					if(!ok)
 						flags&=~SDL_DOUBLEBUF;
-				 } /* if( this->hidden->dbscrollscreen ) */
 				}
 			}
 
 			if(GetCyberMapAttr(SDL_Display->RastPort.BitMap,CYBRMATTR_DEPTH)==bpp)
 				this->hidden->same_format=1;
 		}
-        
+
 		bpp=this->hidden->depth=GetCyberMapAttr(SDL_Display->RastPort.BitMap,CYBRMATTR_DEPTH);
-		//kprintf("Set Video mode depth %ld\n",bpp);
 		D(bug("Setting screen depth to: %ld\n",this->hidden->depth));
 
 		for ( i = 0; i < this->hidden->nvisuals; i++ )
@@ -1368,8 +1093,8 @@ buildnewscreen:
 			SDL_SetError("No matching visual for requested depth");
 			return NULL;	/* should never happen */
 		}
-		//SDL_Visual = this->hidden->visuals[i].visual;
-        SDL_Visual = this->hidden->visuals[i].visual; //no changecreen
+		SDL_Visual = this->hidden->visuals[i].visual;
+
 	}
 
 	/* Set up the X11 window */
@@ -1382,13 +1107,12 @@ buildnewscreen:
 			goto done;
 		}
 	} else {
-		
 		if (CGX_CreateWindow(this,current,width,height,bpp,flags) < 0) {
 			current = NULL;
 			goto done;
 		}
 	}
- 
+
 #if 0
 	/* Set up the new mode framebuffer */
 	if ( ((current->w != width) || (current->h != height)) ||
@@ -1403,10 +1127,8 @@ buildnewscreen:
 	current->flags |= (flags&SDL_RESIZABLE); // Resizable only if the user asked it
 
   done:
-	Delay(1);
 	/* Release the event thread */
 	SDL_Unlock_EventThread();
-	SDL_AmigaUnlockWindow();
 
 	/* We're done! */
 	return(current);
@@ -1428,33 +1150,27 @@ static int CGX_ToggleFullScreen(_THIS, int on)
 	}
 	if ( event_thread ) {
 		SDL_Lock_EventThread();
-	} 
+	}
 	if ( on ) {
 		this->screen->flags |= SDL_FULLSCREEN;
-		
 		CGX_EnterFullScreen(this);
-		SDL_SetVideoMode(this->screen->w - this->offset_x, this->screen->h - this->offset_y,this->hidden->depth,this->screen->flags);
-		//SDL_FillRect(this->screen, NULL, 0);
 	} else {
 		this->screen->flags &= ~SDL_FULLSCREEN;
 		CGX_LeaveFullScreen(this);
-		SDL_SetVideoMode(this->screen->w , this->screen->h,this->hidden->depth , this->screen->flags);
-
 	}
 
 	CGX_RefreshDisplay(this);
 	if ( event_thread ) {
 		SDL_Unlock_EventThread();
 	}
-    
+
 	SDL_ResetKeyboard();
-   
+
 	return(1);
 }
 
 static void SetSingleColor(Uint32 fmt, unsigned char r, unsigned char g, unsigned char b, unsigned char *c)
 {
-	
 	switch(fmt)
 	{
 		case PIXFMT_BGR15:
@@ -1470,10 +1186,10 @@ static void SetSingleColor(Uint32 fmt, unsigned char r, unsigned char g, unsigne
 				Uint16 *t=(Uint16 *)c;
 				*t=(b>>3) | ((g>>3)<<5) | ((r>>3)<<10) ;
 			}
-			break; 
+			break;
 		case PIXFMT_BGR16PC:
 		case PIXFMT_RGB16:
-			{ 
+			{
 				Uint16 *t=(Uint16 *)c;
 				*t=(b>>3) | ((g>>2)<<5) | ((r>>3)<<11) ;
 			}
@@ -1504,7 +1220,6 @@ static void SetSingleColor(Uint32 fmt, unsigned char r, unsigned char g, unsigne
 			c[3]=b;
 			break;
 		case PIXFMT_BGRA32:
-        
 			c[0]=b;
 			c[1]=g;
 			c[2]=r;
@@ -1535,13 +1250,13 @@ static void CGX_UpdateMouse(_THIS)
 	}
 	else
 	{
-		if(	SDL_Display->MouseX>=(SDL_Window->LeftEdge/*+SDL_Window->BorderLeft*/) && SDL_Display->MouseX<(SDL_Window->LeftEdge+ SDL_Window->Width/*-SDL_Window->BorderRight*/) &&
-			SDL_Display->MouseY>=(SDL_Window->TopEdge/*+SDL_Window->BorderLeft*/) && SDL_Display->MouseY<(SDL_Window->TopEdge+SDL_Window->Height/*-SDL_Window->BorderBottom*/)
+		if(	SDL_Display->MouseX>=(SDL_Window->LeftEdge+SDL_Window->BorderLeft) && SDL_Display->MouseX<(SDL_Window->LeftEdge+SDL_Window->Width-SDL_Window->BorderRight) &&
+			SDL_Display->MouseY>=(SDL_Window->TopEdge+SDL_Window->BorderLeft) && SDL_Display->MouseY<(SDL_Window->TopEdge+SDL_Window->Height-SDL_Window->BorderBottom)
 			)
 		{
 			SDL_PrivateAppActive(1, SDL_APPMOUSEFOCUS);
-			SDL_PrivateMouseMotion(0, 0, SDL_Display->MouseX-SDL_Window->LeftEdge/*-SDL_Window->BorderLeft*/,
-										SDL_Display->MouseY-SDL_Window->TopEdge/*-SDL_Window->BorderTop*/);
+			SDL_PrivateMouseMotion(0, 0, SDL_Display->MouseX-SDL_Window->LeftEdge-SDL_Window->BorderLeft,
+										SDL_Display->MouseY-SDL_Window->TopEdge-SDL_Window->BorderTop);
 		}
 		else
 		{
@@ -1631,7 +1346,7 @@ static void CGX_VideoQuit(_THIS)
 	/* Shutdown everything that's still up */
 	/* The event thread should be done, so we can touch SDL_Display */
 	D(bug("CGX_VideoQuit\n"));
-    
+
 	if ( SDL_Display != NULL ) {
 		/* Clean up OpenGL */
 		if(this->gl_data->gl_active == 1) {
@@ -1690,4 +1405,4 @@ static void CGX_VideoQuit(_THIS)
 	D(bug("End of CGX_VideoQuit.\n"));
 
 }
- 
+

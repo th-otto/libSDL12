@@ -22,7 +22,7 @@
 #include "SDL_config.h"
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_sysaudio.h,v 1.2 2002/11/20 08:52:31 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 #ifndef _SDL_sysaudio_h
@@ -31,23 +31,24 @@ static char rcsid =
 #include "SDL_mutex.h"
 #include "SDL_thread.h"
 
+#if defined(WARPOS)
+#pragma pack(2)
+#endif
+
 #include <exec/exec.h>
 #include <dos/dos.h>
 #if defined(__SASC) || defined(WARPOS)
 #include <proto/exec.h>
 #else
-#ifdef MORPHOS
-#include <ppcinline/exec.h>
-#else
 #include <inline/exec.h>
-#include <proto/dos.h>
-#include <inline/dos.h>
-#endif
 #endif
 
 #ifdef ENABLE_AHI
 #include <devices/ahi.h>
 #endif
+
+#pragma pack()
+
 #include "../mydebug.h"
 
 /* The SDL audio driver */

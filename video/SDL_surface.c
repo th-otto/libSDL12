@@ -28,6 +28,7 @@
 #include "SDL_RLEaccel_c.h"
 #include "SDL_pixels_c.h"
 #include "SDL_leaks.h"
+#include "mydebug.h"
 
 
 /* Public routines */
@@ -796,7 +797,7 @@ SDL_Surface * SDL_ConvertSurface (SDL_Surface *surface,
 	}
 
 	/* Create a new surface with the desired format */
-	//kprintf("%ld %d %d\n",format->BitsPerPixel,format->Rmask,format->Amask);
+	D(bug("%ld %d %d\n",format->BitsPerPixel,format->Rmask,format->Amask));
 	convert = SDL_CreateRGBSurface(flags,
 				surface->w, surface->h, format->BitsPerPixel,
 		format->Rmask, format->Gmask, format->Bmask, format->Amask);

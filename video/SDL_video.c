@@ -28,6 +28,7 @@
 #include "SDL_blit.h"
 #include "SDL_pixels_c.h"
 #include "SDL_cursor_c.h"
+#include "mydebug.h"
 #include "../events/SDL_sysevents.h"
 #include "../events/SDL_events_c.h"
 
@@ -39,6 +40,8 @@ static VideoBootStrap *bootstrap[] = {
 #ifdef SDL_VIDEO_DRIVER_AMIGAOS
 	&CGX_bootstrap,
 #endif
+
+#define	GL_STENCIL_TEST                  0x0B90
 
 #if SDL_VIDEO_DRIVER_DUMMY
 	&DUMMY_bootstrap,
@@ -358,7 +361,7 @@ static int SDL_GetVideoMode (int *w, int *h, int *BitsPerPixel, Uint32 flags)
 
 	/* Try the original video mode, get the closest depth */
 	native_bpp = SDL_VideoModeOK(*w, *h, *BitsPerPixel, flags);
-	kprintf("screen depth %ld\n",native_bpp);
+	D(bug("screen depth %ld\n",native_bpp));
 	
 	if ( native_bpp == *BitsPerPixel ) {
 		return(1);
@@ -500,10 +503,8 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 	//int flags2 = flags;
 	SDL_GrabMode saved_grab;
 #ifdef __AMIGA__
-#ifndef APOLLO_BLIT
 	flags &= ~SDL_DOUBLEBUF;
-#endif
-    if (getenv("SDL_HWSURFACE"))flags |= SDL_HWSURFACE ;
+	if (getenv("SDL_HWSURFACE"))flags |= SDL_HWSURFACE ;
 	if (getenv("SDL_SWSURFACE"))flags &= ~SDL_HWSURFACE ;
 #endif
 	/* Start up the video driver, if necessary..
@@ -613,7 +614,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 	 * that case?  Should we call SDL_VideoInit() again?
 	 */
 	SDL_VideoSurface = (mode != NULL) ? mode : prev_mode;
-    kprintf("surface depth of SDL_VideoSurface %ld \n",SDL_VideoSurface->format->BitsPerPixel);
+	D(bug("surface depth of SDL_VideoSurface %ld \n",SDL_VideoSurface->format->BitsPerPixel));
 	if ( (mode != NULL) && (!is_opengl) ) {
 		/* Sanity check */
 		if ( (mode->w < width) || (mode->h < height) ) {
@@ -820,8 +821,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 	  //if  (!(SDL_VideoSurface->flags & SDL_OPENGL) &&
 	  //    !(flags2 & SDL_HWSURFACE))
 	  {
-		//printf("Create Shadow surface\n");
-       		kprintf("Create Shadow surface\n");
+       		D(bug("Create Shadow surface\n"));
 		 
 		SDL_CreateShadowSurface(bpp);//mode->format->BitsPerPixel);
 
@@ -833,8 +833,7 @@ SDL_Surface * SDL_SetVideoMode (int width, int height, int bpp, Uint32 flags)
 	   }
 		else 
 		{
-		kprintf("Using no Shadowsurface \n");
-		//printf("Using no Shadowsurface\n");
+		D(bug("Using no Shadowsurface \n"));
 
 		SDL_PublicSurface = SDL_VideoSurface;
 		}
@@ -1562,9 +1561,9 @@ void SDL_GL_Lock()
 	{
 		SDL_VideoDevice *this = current_video;
 
-		this->glPushAttrib( GL_ALL_ATTRIB_BITS );	/* TODO: narrow range of what is saved */
+//		this->glPushAttrib( GL_ALL_ATTRIB_BITS );	/* TODO: narrow range of what is saved */
 #ifdef GL_CLIENT_PIXEL_STORE_BIT
-		this->glPushClientAttrib( GL_CLIENT_PIXEL_STORE_BIT );
+//		this->glPushClientAttrib( GL_CLIENT_PIXEL_STORE_BIT );
 #endif
 
 		this->glEnable(GL_TEXTURE_2D);
@@ -1614,8 +1613,8 @@ void SDL_GL_Unlock()
 		this->glMatrixMode(GL_PROJECTION);
 		this->glPopMatrix();
 
-		this->glPopClientAttrib();
-		this->glPopAttrib();
+//		this->glPopClientAttrib();
+//		this->glPopAttrib();
 	}
 #endif
 }

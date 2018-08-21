@@ -22,29 +22,30 @@
 
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_ahiaudio.h,v 1.2 2002/11/20 08:51:17 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 #ifndef _SDL_ahiaudio_h
 #define _SDL_ahiaudio_h
+
+#if defined(WARPOS)
+#pragma pack(2)
+#endif
 
 #include <exec/exec.h>
 #include <dos/dos.h>
 #if defined(__SASC) || defined(WARPOS)
 #include <proto/exec.h>
 #else
-#ifdef MORPHOS
-#include <ppcinline/exec.h>
-#else
 #include <inline/exec.h>
-#include <proto/dos.h>
-#include <inline/dos.h>
 #endif
-#endif
+#include <devices/ahi.h>
+
+#pragma pack()
+
 #include <stdlib.h>
 #include <string.h>
 
-#include <devices/ahi.h>
 #include "../../mydebug.h"
 #include "../SDL_sysaudio.h"
 

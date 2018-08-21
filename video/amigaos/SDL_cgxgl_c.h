@@ -22,18 +22,13 @@
 
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_cgxgl_c.h,v 1.2 2002/11/20 08:51:37 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 /* StormMesa implementation of SDL OpenGL support */
 
 #include "../SDL_sysvideo.h"
 #define _THIS   SDL_VideoDevice *_this
-
-#ifdef SDL_VIDEO_OPENGL
-#include <GL/Amigamesa.h>
-extern void *AmiGetGLProc(const char *proc);
-#endif /* HAVE_OPENGL */
 
 struct SDL_PrivateGLData {
 	int gl_active;

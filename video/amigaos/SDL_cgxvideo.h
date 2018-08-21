@@ -22,7 +22,7 @@
 
 #ifdef SAVE_RCSID
 static char rcsid =
- "@(#) $Id: SDL_cgxvideo.h,v 1.2 2002/11/20 08:51:51 gabry Exp $";
+ "@(#) $Id$";
 #endif
 
 #ifndef _SDL_cgxvideo_h
@@ -34,6 +34,10 @@ static char rcsid =
 #include <stdlib.h>
 #endif
 #include <string.h>
+
+#if defined(WARPOS)
+#pragma pack(2)
+#endif
 
 #include <exec/exec.h>
 #include <cybergraphx/cybergraphics.h>
@@ -47,20 +51,14 @@ static char rcsid =
 #include <proto/intuition.h>
 #include <proto/console.h>
 #else
-#ifdef MORPHOS
-#include <ppcinline/exec.h>
-#include <ppcinline/cybergraphics.h>
-#include <ppcinline/graphics.h>
-#include <ppcinline/intuition.h>
-#include <ppcinline/console.h>
-#else
 #include <inline/exec.h>
 #include <inline/cybergraphics.h>
 #include <inline/graphics.h>
-#include <inline/intuition.h>
+#incluxde <inline/intuition.h>
 #include <inline/console.h>
 #endif
-#endif
+
+#pragma pack()
 
 #include "../../mydebug.h"
 #include "SDL_mouse.h"

@@ -49,7 +49,7 @@
 #error Need thread implementation for this platform
 #include "generic/SDL_systhread_c.h"
 #endif
-#include "../SDL_error_c.h"
+#include "../main/SDL_error_c.h"
 
 /* This is the system-independent thread info structure */
 struct SDL_Thread {
